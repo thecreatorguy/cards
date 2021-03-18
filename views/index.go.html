@@ -1,0 +1,22 @@
+{{define "index" -}}
+<!doctype html>
+<html class="no-js" lang="">
+
+<head>
+  <meta charset="utf-8">
+  <title>Terraforming Mars Facilitator</title>
+  <link rel="stylesheet" href="{{.AssetsPrefix}}/style.css">
+  <meta name="theme-color" content="#fafafa">
+  <script src="https://kit.fontawesome.com/692d0a4337.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+  <main id="main">
+    <div>test</div>
+  </main>
+  <script id="base-url" type="application/json">{"BASE_URL": "{{.BaseURL}}"}</script>
+  <script src="{{.AssetsPrefix}}/app.js"></script>
+</body>
+
+</html>
+{{- end}}
