@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -41,6 +43,11 @@ type ErrorMessage struct {
 func (m Message) GetContent(v interface{}) {
 	data, _ := json.Marshal(m.Content)
 	json.Unmarshal(data, v)
+}
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
 }
 
 func makeConnection(w http.ResponseWriter, r *http.Request) {

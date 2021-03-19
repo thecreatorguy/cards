@@ -3,80 +3,83 @@ package game
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
 	"html/template"
 	"io/fs"
 	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-}
-
 const (
-	
 	AssetsPrefix = "/assets"
 )
 
 var (
 	//go:embed static
-	Assets embed.FS
+	assets embed.FS
 	//go:embed views
-	Views embed.FS
+	views embed.FS
 )
 
+func AddRoutes(r *mux.Router, basePath string) {
+	fsys, err := fs.Sub(assets, "static")
+	if err != nil {
+		panic(err)
+	}
 
-func AddRoutes(r *mux.Router, baseURL string) {
-	// BaseURL = baseURL
-	fs.Sub()
-	fs := http.StripPrefix(baseURL + AssetsPrefix, http.FileServer(http.Dir(assetsDir)))
-	r.PathPrefix(baseURL + AssetsPrefix).Handler(fs)
+	templates := template.Must(template.ParseFS(views, "views/*"))
 
-	r.HandleFunc(baseURL + "/lobby", handleLobbyMenu(indexTemplateFile, baseURL)).Methods("GET")
-	r.HandleFunc(baseURL + "/game", handleGame()).Methods("GET")
-	r.HandleFunc(baseURL + "/game/websocket", makeConnection).Methods("GET")
+	r.PathPrefix(basePath + AssetsPrefix).Handler(
+		http.StripPrefix(basePath + AssetsPrefix, http.FileServer(http.FS(fsys))),
+	)
+
+	r.HandleFunc(basePath + "/lobby", handleLobbyMenu(basePath, templates)).Methods("GET")
+	r.HandleFunc(basePath + "/lobby/list", handleLobbyList).Methods("GET")
+	r.HandleFunc(basePath + "/game", handleGame(basePath, templates)).Methods("GET")
+	r.HandleFunc(basePath + "/game/websocket", makeConnection).Methods("GET")
 }
 
 // handleApp returns a handler that returns the index page with the correct assets path filled in
-func handleLobbyMenu(indexTemplateFile, baseURL string) func(w http.ResponseWriter, r *http.Request) {
+func handleLobbyMenu(basePath string, templates *template.Template) func(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
-	pageTemplate := template.Must(template.ParseFiles(indexTemplateFile))
-	err := pageTemplate.ExecuteTemplate(&buf, "index", struct{BaseURL string; AssetsPrefix string}{
-		baseURL, 
-		baseURL + AssetsPrefix,
+	err := templates.ExecuteTemplate(&buf, "lobby-menu", struct{BasePath string; AssetsPrefix string}{
+		basePath, 
+		basePath + AssetsPrefix,
 	})
 	if err != nil {
 		log.Fatal(err)
 		return nil
 	}
 
-	index := buf.Bytes()
+	lobbyMenu := buf.Bytes()
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write(index)
+		w.Write(lobbyMenu)
 	}
 }
 
+func handleLobbyList(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(GetUnstartedGames())
+}
+
 // handleApp returns a handler that returns the index page with the correct assets path filled in
-func handleGame(indexTemplateFile, baseURL string) func(w http.ResponseWriter, r *http.Request) {
+func handleGame(basePath string, templates *template.Template) func(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
-	pageTemplate := template.Must(template.ParseFiles(indexTemplateFile))
-	err := pageTemplate.ExecuteTemplate(&buf, "index", struct{BaseURL string; AssetsPrefix string}{
-		baseURL, 
-		baseURL + AssetsPrefix,
+	err := templates.ExecuteTemplate(&buf, "game", struct{BasePath string; AssetsPrefix string}{
+		basePath, 
+		basePath + AssetsPrefix,
 	})
 	if err != nil {
 		log.Fatal(err)
 		return nil
 	}
 
-	index := buf.Bytes()
+	game := buf.Bytes()
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write(index)
+		w.Write(game)
 	}
 }

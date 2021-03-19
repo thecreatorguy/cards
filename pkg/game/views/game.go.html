@@ -1,4 +1,4 @@
-{{define "index" -}}
+{{define "game" -}}
 <!doctype html>
 <html class="no-js" lang="">
 
@@ -12,12 +12,12 @@
 
 <body>
   <main id="main">
-    <div>test</div>
+    
   </main>
   <script id="json-data" type="application/json">{
-    "base_url": "{{.BaseURL}}"
+    "base_path": "{{.BasePath}}"
   }</script>
-  <script src="{{.AssetsPrefix}}/app.js"></script>
+  <script src="{{.AssetsPrefix}}/game.js"></script>
 </body>
 
 </html>

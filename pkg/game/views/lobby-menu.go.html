@@ -1,0 +1,31 @@
+{{define "lobby-menu" -}}
+<!doctype html>
+<html class="no-js" lang="">
+
+<head>
+  <meta charset="utf-8">
+  <title>Terraforming Mars Facilitator</title>
+  <link rel="stylesheet" href="{{.AssetsPrefix}}/style.css">
+  <meta name="theme-color" content="#fafafa">
+  <script src="https://kit.fontawesome.com/692d0a4337.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+  <main id="main">
+    <h1>Terraforming Mars Lobbies</h1>
+    <div id="lobbies-container">
+      <table>
+        <tbody id="lobbies-table"></tbody>
+      </table>
+    </div>
+    <button id="new">New Lobby</button>
+    <button id="refresh">Refresh Lobbies</button>
+  </main>
+  <script id="json-data" type="application/json">{
+    "base_path": "{{.BasePath}}"
+  }</script>
+  <script src="{{.AssetsPrefix}}/lobby.js"></script>
+</body>
+
+</html>
+{{- end}}

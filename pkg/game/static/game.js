@@ -7,8 +7,6 @@ class TerraformingMars {
     }
 }
 
-function handle
-
 function main() {
     const urlSplit = window.location.href.split("/");
     const protocol = urlSplit[0] == "http:" ? "ws" : "wss";
