@@ -1,0 +1,12 @@
+---
+  - name: Colonizer Training Camp
+    cost: 8
+    requirement: 
+        label: O2
+        value: 5
+        maximum: true
+    tags: [jovian, building]
+    type: automated
+    content: (Oxygen must be 5% or less.)
+    victory_points: 
+        value: 2

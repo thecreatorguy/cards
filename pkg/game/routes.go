@@ -2,7 +2,9 @@ package game
 
 import (
 	"bytes"
+	"embed"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 
@@ -15,22 +17,37 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-func AddRoutes(r *mux.Router, baseURL, appPath, indexTemplateFile, assetsDir string) {
-	assetsPrefix := "/assets"
-	fs := http.StripPrefix(baseURL + assetsPrefix, http.FileServer(http.Dir(assetsDir)))
-	r.PathPrefix(baseURL + assetsPrefix).Handler(fs)
+const (
+	
+	AssetsPrefix = "/assets"
+)
 
-	r.HandleFunc(baseURL + appPath, handleRoot(indexTemplateFile, baseURL, assetsPrefix)).Methods("GET")
-	r.HandleFunc(baseURL + "/game", handleGame).Methods("GET")
+var (
+	//go:embed static
+	Assets embed.FS
+	//go:embed views
+	Views embed.FS
+)
+
+
+func AddRoutes(r *mux.Router, baseURL string) {
+	// BaseURL = baseURL
+	fs.Sub()
+	fs := http.StripPrefix(baseURL + AssetsPrefix, http.FileServer(http.Dir(assetsDir)))
+	r.PathPrefix(baseURL + AssetsPrefix).Handler(fs)
+
+	r.HandleFunc(baseURL + "/lobby", handleLobbyMenu(indexTemplateFile, baseURL)).Methods("GET")
+	r.HandleFunc(baseURL + "/game", handleGame()).Methods("GET")
+	r.HandleFunc(baseURL + "/game/websocket", makeConnection).Methods("GET")
 }
 
-// handleRoot returns a handler that returns the index page with the correct assets path filled in
-func handleRoot(indexTemplateFile, baseURL, assetsPrefix string) func(w http.ResponseWriter, r *http.Request) {
+// handleApp returns a handler that returns the index page with the correct assets path filled in
+func handleLobbyMenu(indexTemplateFile, baseURL string) func(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	pageTemplate := template.Must(template.ParseFiles(indexTemplateFile))
 	err := pageTemplate.ExecuteTemplate(&buf, "index", struct{BaseURL string; AssetsPrefix string}{
 		baseURL, 
-		baseURL + assetsPrefix,
+		baseURL + AssetsPrefix,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -44,23 +61,22 @@ func handleRoot(indexTemplateFile, baseURL, assetsPrefix string) func(w http.Res
 	}
 }
 
-func handleGame(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-    if err != nil {
-        log.Println(err)
-        return
-    }
-
-	messageType, p, err := conn.ReadMessage()
+// handleApp returns a handler that returns the index page with the correct assets path filled in
+func handleGame(indexTemplateFile, baseURL string) func(w http.ResponseWriter, r *http.Request) {
+	var buf bytes.Buffer
+	pageTemplate := template.Must(template.ParseFiles(indexTemplateFile))
+	err := pageTemplate.ExecuteTemplate(&buf, "index", struct{BaseURL string; AssetsPrefix string}{
+		baseURL, 
+		baseURL + AssetsPrefix,
+	})
 	if err != nil {
-		log.Println(err);
-		return;
+		log.Fatal(err)
+		return nil
 	}
-	log.Println(messageType)
-	log.Println(string(p));
-	if err := conn.WriteMessage(messageType, p); err != nil {
-        log.Println(err)
-        return
-    }
-	conn.Close();
+
+	index := buf.Bytes()
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write(index)
+	}
 }

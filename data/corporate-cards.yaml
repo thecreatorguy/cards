@@ -1,0 +1,12 @@
+---
+  - name: Asteroid Mining Consortium
+    cost: 13
+    requirement: 
+        label: Titanium Production
+        value: 51
+        maximum: false
+    tags: [jovian, building]
+    type: automated
+    content: 
+    victory_points:
+        value: 1

@@ -14,7 +14,7 @@ import (
 func main() {
 	r := mux.NewRouter()
 
-	game.AddRoutes(r, "", "/", "./views/index.go.html", "./static")
+	game.AddRoutes(r, "")
 
 	port := os.Getenv("PORT")
 	if port == "" {
