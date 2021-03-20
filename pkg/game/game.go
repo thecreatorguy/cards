@@ -100,7 +100,7 @@ type Game struct {
 	PreludeDeck  []*Prelude `json:"-"`
 	Players map[string]*Player `json:"players"`
 	PlayerOrder []string `json:"player_order"`
-	Player1 int `json:"player1"`
+	Player1 string `json:"player1"`
 	CurrentPlayer int `json:"current_player"`
 	PassDirection string `json:"pass_direction"`
 }

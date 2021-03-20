@@ -12,7 +12,21 @@
 
 <body>
   <main id="main">
-    
+    <div id="setup">
+      <div id="lobbyname">
+        <label for="lobby-name-input">Lobby Name:</label>
+        <input type="text" id="lobby-name-input" name="lobby-name-input" required>
+      </div>
+      <label for="nickname-input">Nickname:</label>
+      <input type="text" id="nickname-input" name="nickname-input" required>
+      <button id="submit-setup">Submit</button>
+    </div>
+    <div id="lobby">
+      test
+    </div>
+    <div id="game">
+      tesy
+    </div>
   </main>
   <script id="json-data" type="application/json">{
     "base_path": "{{.BasePath}}"

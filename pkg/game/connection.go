@@ -8,36 +8,25 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const (
-	NewGameCode = MessageCode("new_game")
-	JoinGameCode = MessageCode("join_game")
-	RequestLobbiesCode = MessageCode("request_lobbies")
-	ErrorMessageCode = MessageCode("error")
-)
-
-type MessageCode string
-
-const (
-	MenuState = ConnectionState("menu")
-	InGameState = ConnectionState("in_game")
-)
-
-type ConnectionState string
-
-type Message struct {
-	Code MessageCode `json:"code"`
-	Content interface{} `json:"content"`
-}
+type ErrorCode string
 const (
 	FailedDecodingError = ErrorCode("failed_decoding")
 	InvalidMessageCodeError = ErrorCode("invalid_message_code")
 )
 
-type ErrorCode string
-
 type ErrorMessage struct {
 	Code ErrorCode `json:"code"`
 	Text string `json:"text"`
+}
+
+type MessageCode string
+const (
+	JoinGameCode = MessageCode("join_game")
+	ErrorMessageCode = MessageCode("error")
+)
+type Message struct {
+	Code MessageCode `json:"code"`
+	Content interface{} `json:"content"`
 }
 
 func (m Message) GetContent(v interface{}) {
@@ -51,53 +40,39 @@ var upgrader = websocket.Upgrader{
 }
 
 func makeConnection(w http.ResponseWriter, r *http.Request) {
+	var session string
+	for _, c := range r.Cookies() {
+		if c.Name == "session" {
+			session = c.Value
+		}
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
     if err != nil {
         log.Println(err)
         return
     }
-	id := "temp"
 
 	var m Message
-	var state ConnectionState = MenuState
 	var g *Game
 	for {
 		err = conn.ReadJSON(&m)
 		if err != nil {
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseNoStatusReceived, websocket.CloseGoingAway) {
+				break
+			}
 			conn.WriteJSON(Message{Code: ErrorMessageCode, Content: ErrorMessage{FailedDecodingError, err.Error()}})
 			continue
 		}
 
-		switch state {
-		case MenuState:
-			switch m.Code {
-			case NewGameCode:
-				var lobbyName string
-				m.GetContent(&lobbyName)
-				g = NewGame(conn, id, lobbyName)
-				conn.WriteJSON(Message{Code: NewGameCode})
-				state = InGameState
-
-			case JoinGameCode:
-				var lobbyName string
-				m.GetContent(&lobbyName)
-				g = NewGame(conn, id, lobbyName)
-				conn.WriteJSON(Message{Code: NewGameCode})
-				state = InGameState
-		
-			case RequestLobbiesCode:
-				conn.WriteJSON(Message{RequestLobbiesCode, GetUnstartedGames()})
-			
-			default:
-				conn.WriteJSON(Message{Code: ErrorMessageCode, Content: ErrorMessage{InvalidMessageCodeError, ""}})
-			}
-
-		case InGameState:
-			done := g.HandleMessage(m, id)
-			if (done) {
-				g = nil
-				state = MenuState
-			}
+		if (m.Code == JoinGameCode) {
+			log.Println(m)
 		}
+
+		g.HandleMessage(m, session)
 	}
+}
+
+func addToLobby() {
+	
 }
