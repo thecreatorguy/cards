@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
@@ -21,12 +22,19 @@ type ErrorMessage struct {
 
 type MessageCode string
 const (
+	PingCode = MessageCode("ping")
+	SetupCode = MessageCode("setup")
+	HostGameCode = MessageCode("host_game")
 	JoinGameCode = MessageCode("join_game")
+	UpdateCode = MessageCode("update")
+	UpdateLobbySettingsCode = MessageCode("update_lobby_settings")
+	StartGameCode = MessageCode("start_game")
+	FirstGenCode = MessageCode("first_gen")
 	ErrorMessageCode = MessageCode("error")
 )
 type Message struct {
 	Code MessageCode `json:"code"`
-	Content interface{} `json:"content"`
+	Content interface{} `json:"content,omitempty"`
 }
 
 func (m Message) GetContent(v interface{}) {
@@ -40,10 +48,10 @@ var upgrader = websocket.Upgrader{
 }
 
 func makeConnection(w http.ResponseWriter, r *http.Request) {
-	var session string
+	var id string
 	for _, c := range r.Cookies() {
 		if c.Name == "session" {
-			session = c.Value
+			id = c.Value
 		}
 	}
 
@@ -53,26 +61,102 @@ func makeConnection(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-	var m Message
-	var g *Game
+	if s, ok := Sessions[id]; ok {
+		// check if original is still alive, if it is then terminate this one
+		// if not, replace connection. if in game, let game know. if not, start lobby
+		s.Conn = conn
+	} else {
+		s := NewSession(id, conn)
+		s.SendMessage(Message{Code: SetupCode})
+		s.Lobby()
+	}
+	
+}
+
+var Sessions = map[string]*Session{}
+
+type Session struct {
+	ID string
+	Conn *websocket.Conn
+	ReadLock *sync.Mutex
+	WriteLock *sync.Mutex
+}
+
+func NewSession(id string, conn *websocket.Conn) *Session {
+	s := &Session{id, conn, &sync.Mutex{}, &sync.Mutex{}}
+	Sessions[id] = s
+	return s
+}
+
+func (s *Session) Lobby() {
 	for {
-		err = conn.ReadJSON(&m)
+		m, closed, err := s.ReceiveMessage()
+		if closed {
+			delete(Sessions, s.ID)
+			break
+		}
 		if err != nil {
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseNoStatusReceived, websocket.CloseGoingAway) {
+			closed, err := s.SendMessage(Message{ErrorMessageCode, ErrorMessage{FailedDecodingError, err.Error()}})
+			if closed {
 				break
 			}
-			conn.WriteJSON(Message{Code: ErrorMessageCode, Content: ErrorMessage{FailedDecodingError, err.Error()}})
+			if err != nil {
+				log.Println(err)
+			}
 			continue
 		}
 
-		if (m.Code == JoinGameCode) {
-			log.Println(m)
-		}
-
-		g.HandleMessage(m, session)
+		switch m.Code {
+		case HostGameCode:
+			var payload struct{Nickname string `json:"nickname"`; LobbyName string `json:"lobby_name"`}
+			m.GetContent(&payload)
+			NewGame(s, payload.LobbyName, payload.Nickname)
+			return
+		case JoinGameCode:
+			var payload struct{Nickname string `json:"nickname"`; LobbyName string `json:"lobby_name"`}
+			m.GetContent(&payload)
+			Games[payload.LobbyName].Join(s, payload.Nickname)
+			return
+		default:
+			s.SendInvalidCode()
+		}		
 	}
 }
 
-func addToLobby() {
+var closedStatuses = []int{
+	websocket.CloseNormalClosure,
+	websocket.CloseNoStatusReceived,
+	websocket.CloseGoingAway,
+}
+
+func (s *Session) ReceiveMessage() (Message, bool, error) {
+	var m Message
+
+	s.ReadLock.Lock()
+	err := s.Conn.ReadJSON(&m)
+	s.ReadLock.Unlock()
 	
+	return m, websocket.IsCloseError(err, closedStatuses...), err
+}
+
+func (s *Session) SendMessage(m Message) (bool, error) {
+	s.WriteLock.Lock()
+	err := s.Conn.WriteJSON(m)
+	s.WriteLock.Unlock()
+
+	return websocket.IsCloseError(err, closedStatuses...), err
+}
+
+func (s *Session) Alive() bool {
+	closed, err := s.SendMessage(Message{Code: PingCode})
+	if closed || err != nil {
+		return false
+	}
+
+	_, closed, err = s.ReceiveMessage()
+	return !closed && err == nil
+}
+
+func (s *Session) SendInvalidCode() {
+	s.SendMessage(Message{ErrorMessageCode, ErrorMessage{InvalidMessageCodeError, "Invalid message code"}})
 }

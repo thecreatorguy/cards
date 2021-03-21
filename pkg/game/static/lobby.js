@@ -16,8 +16,8 @@ function writeLobbiesTable(lobbies) {
       let row = document.createElement('tr');
       table.append(row);
 
-      row.append(`<td>${l.lobby_name}</td>`);
-      row.append(`<td>${Object.keys(l.players).length}</td>`);
+      row.innerHTML += `<td>${l.lobby_name}</td>`;
+      row.innerHTML += `<td>${Object.keys(l.players).length}</td>`;
 
       let buttons = document.createElement('td');
       row.append(buttons);

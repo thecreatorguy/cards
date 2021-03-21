@@ -35,7 +35,7 @@ func AddRoutes(r *mux.Router, basePath string) {
 		http.StripPrefix(basePath + AssetsPrefix, http.FileServer(http.FS(fsys))),
 	)
 
-	r.HandleFunc(basePath + "/lobby", handleLobbyMenu(basePath, templates)).Methods("GET")
+	r.HandleFunc(basePath + "/waiting-room", handleLobbyMenu(basePath, templates)).Methods("GET")
 	r.HandleFunc(basePath + "/lobby/list", handleLobbyList).Methods("GET")
 	r.HandleFunc(basePath + "/game", handleGame(basePath, templates)).Methods("GET")
 	r.HandleFunc(basePath + "/game/websocket", makeConnection).Methods("GET")
