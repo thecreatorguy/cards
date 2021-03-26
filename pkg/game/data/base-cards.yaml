@@ -1,12 +1,50 @@
 ---
-  - name: Colonizer Training Camp
-    cost: 8
-    requirement: 
-        label: O2
-        value: 5
-        maximum: true
-    tags: [jovian, building]
-    type: automated
-    content: (Oxygen must be 5% or less.)
-    victory_points: 
-        value: 2
+- name: Colonizer Training Camp
+  cost: 8
+  requirement: 
+    label: O2
+    value: 5
+    maximum: true
+  tags: [jovian, building]
+  type: automated
+  content: (Oxygen must be 5% or less.)
+  victory_points: 
+    value: 2
+
+- name: Deep Well Heating
+
+- name: Cloud Seeding
+
+- name: Search For Life
+
+- name: Martian Rails
+
+- name: Capital
+
+- name: Asteroid
+
+- name: Comet
+
+- name: Big Asteroid
+
+- name: Water Import From Europa
+
+- name: Equatorial Magnetizer
+
+- name: Domed Crater
+
+- name: Noctis City
+
+- name: Methane From Titanium
+
+- name: Imported Hydrogen
+
+- name: Research Outpost
+
+- name: Phobos Space Haven
+
+- name: Black Polar Dust
+
+- name: Arctic Algae
+
+- name: Predators

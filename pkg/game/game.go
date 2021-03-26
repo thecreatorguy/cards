@@ -2,13 +2,17 @@ package game
 
 import (
 	_ "embed"
+	"log"
 	"math/rand"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/go-yaml/yaml"
+	"github.com/thecreatorguy/terraforming-mars/pkg/jsonyaml"
 )
+
+//-------------------------------------------------------------------
+//---------------------   Types and Constants   ---------------------
+//-------------------------------------------------------------------
 
 const (
 	LeftPassDirection 	= "left"
@@ -18,11 +22,12 @@ const (
 type Player struct {
 	*Session `json:"-"`
 	Nickname string `json:"nickname"`
-	Corporation Corporation `json:"corporation"`
+	Corporation PlayerCorporation `json:"corporation"`
 	Hand []*Card `json:"-"`
 	PossibleCards []*Card `json:"-"`
 	PlayedCards []PlayedCard `json:"played_cards"`
-	PlayedPreludes []Prelude `json:"played_preludes"`
+	PlayedPreludes []*Prelude `json:"played_preludes"`
+	Passed bool `json:"passed"`
 }
 
 type Settings struct {
@@ -33,9 +38,7 @@ type Settings struct {
 type GameState string
 const (
 	InLobbyState = GameState("in_lobby")
-	FirstGenState = GameState("first_gen")
-	InGenState = GameState("in_gen")
-	BetweenGensState = GameState("between_gens")
+	InGameState = GameState("in_game")
 )
 
 type Game struct {
@@ -57,46 +60,49 @@ type Game struct {
 var Games = map[string]*Game{}
 var SessionToGame = map[string]*Game{}
 
-//go:embed data/corporation-cards.yaml
-var corporationCardsFile string
+//-------------------------------------------------------------------
+//--------------------------   Init Cards   -------------------------
+//-------------------------------------------------------------------
+
+//go:embed data/corporations.yaml
+var corporationsFile []byte
+//go:embed data/preludes.yaml
+var preludesFile []byte
 //go:embed data/base-cards.yaml
-var baseCardsFile string
+var baseCardsFile []byte
 //go:embed data/corporate-cards.yaml
-var corporateCardsFile string
+var corporateCardsFile []byte
 //go:embed data/prelude-cards.yaml
-var preludeCardsFile string
+var preludeCardsFile []byte
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
 
-	err := yaml.NewDecoder(strings.NewReader(corporationCardsFile)).Decode(&CorporationCards)
+	err := jsonyaml.Unmarshal(corporationsFile, &Corporations)
 	if err != nil {
 		panic(err)
 	}
-	err = yaml.NewDecoder(strings.NewReader(baseCardsFile)).Decode(&BaseCards)
+	err = jsonyaml.Unmarshal(preludesFile, &Preludes)
 	if err != nil {
 		panic(err)
 	}
-	err = yaml.NewDecoder(strings.NewReader(corporateCardsFile)).Decode(&CorporateCards)
+	err = jsonyaml.Unmarshal(baseCardsFile, &BaseCards)
 	if err != nil {
 		panic(err)
 	}
-	err = yaml.NewDecoder(strings.NewReader(preludeCardsFile)).Decode(&PreludeCards)
+	err = jsonyaml.Unmarshal(corporateCardsFile, &CorporateCards)
+	if err != nil {
+		panic(err)
+	}
+	err = jsonyaml.Unmarshal(preludeCardsFile, &PreludeCards)
 	if err != nil {
 		panic(err)
 	}
 }
 
-func GetUnstartedGames() []*Game {
-	unstarted := []*Game{}
-	for _, g := range Games {
-		if (!g.Started()) {
-			unstarted = append(unstarted, g)
-		}
-	}
-
-	return unstarted
-}
+//-------------------------------------------------------------------
+//----------------------------   In Lobby   -------------------------
+//-------------------------------------------------------------------
 
 func NewGame(host *Session, lobbyName, nickname string) {
 	p := &Player{Session: host, Nickname: nickname}
@@ -132,13 +138,6 @@ func (g *Game) Join(s *Session, nickname string) bool {
 	return true	
 }
 
-type UpdateLobbySettingsPayload struct {
-	UseCorporateCards *bool `json:"use_corporate_cards,omitempty"`
-	UsePreludeCards *bool `json:"use_prelude_cards,omitempty"`
-	PlayerSwapIndex1 *int `json:"player_swap_index_1,omitempty"`
-	PlayerSwapIndex2 *int `json:"player_swap_index_2,omitempty"`
-}
-
 func (g *Game) Run() {
 	Games[g.LobbyName] = g
 	for _, p := range g.Players {
@@ -158,20 +157,27 @@ func (g *Game) Run() {
 			default:
 				g.Host.SendInvalidCode()
 			}
-		case FirstGenState:
-		case BetweenGensState:
-		case InGenState:
+		case InGameState:
+			done := g.PlayTurn()
+			if done {
+				g.NextGeneration()
+			}
 		}
 	}
 
 	for _, p := range g.Players {
-		delete(SessionToGame, p.Session.ID)
+		delete(SessionToGame, p.ID)
 	}
 	delete(Games, g.LobbyName)
 }
 
 func (g *Game) UpdateLobbySettings(m Message) {
-	var pyld UpdateLobbySettingsPayload
+	var pyld struct {
+		UseCorporateCards *bool `json:"use_corporate_cards,omitempty"`
+		UsePreludeCards *bool `json:"use_prelude_cards,omitempty"`
+		PlayerSwapIndex1 *int `json:"player_swap_index_1,omitempty"`
+		PlayerSwapIndex2 *int `json:"player_swap_index_2,omitempty"`
+	}
 	m.GetContent(&pyld)
 	if pyld.UseCorporateCards != nil {
 		g.Settings.UseCorporateCards = *pyld.UseCorporateCards
@@ -187,15 +193,21 @@ func (g *Game) UpdateLobbySettings(m Message) {
 	g.UpdatePlayers()
 }
 
-type FirstGenPayload struct {
+//-------------------------------------------------------------------
+//----------------------------   In Game   --------------------------
+//-------------------------------------------------------------------
+
+type Test struct {
 	Corporations []*Corporation `json:"corporations"`
 	Cards []*Card `json:"cards"`
 	Preludes []*Prelude `json:"preludes"`
 }
 
 func (g *Game) Start() { 
+	g.State = InGameState
+
 	// Initialize the game state, shuffle cards
-	corporations := append([]*Corporation{}, CorporationCards...)
+	corporations := append([]*Corporation{}, Corporations...)
 	rand.Shuffle(len(corporations), func(i, j int) {corporations[i], corporations[j] = corporations[j], corporations[i]})
 	g.CorporationDeck = corporations
 
@@ -207,7 +219,7 @@ func (g *Game) Start() {
 	g.Deck = deck
 
 	if g.Settings.UsePreludeCards {
-		preludes := append([]*Prelude{}, PreludeCards...)
+		preludes := append([]*Prelude{}, Preludes...)
 		g.PreludeDeck = preludes
 	}
 
@@ -216,22 +228,46 @@ func (g *Game) Start() {
 	g.Player1 = rand.Intn(len(g.Players))
 	g.CurrentPlayer = g.Player1
 	g.PassDirection = LeftPassDirection
-	g.State = FirstGenState
 
 	// Handle first generation
 	var wg sync.WaitGroup
 	wg.Add(len(g.Players))
 	for _, p := range g.Players {
 		go func(p *Player) {
-			payload := FirstGenPayload{
-				Corporations: g.DealCorporations(3),
-				Cards: g.DealCards(10),
-				Preludes: g.DealPreludes(4),
+			deal := Test{
+				Corporations: g.DrawCorporations(3),
+				Cards: g.DrawCards(10),
+				Preludes: g.DrawPreludes(4),
 			}
-			p.SendMessage(Message{FirstGenCode, payload})
+			
+			closed, err := p.SendMessage(Message{FirstGenCode, deal})
+			if closed {
+				log.Println("closed")
+			}
+			if err != nil {
+				log.Println(err)
+			}
 
-			p.ReceiveMessage()
-			// TODO parse out what was passed back
+			m, _, _ := p.ReceiveMessage()
+			var resp struct {
+				Corporation int `json:"corporation"`
+				Cards []int `json:"cards"`
+				Preludes []int `json:"preludes"`
+			}
+			m.GetContent(&resp)
+
+			p.Corporation = PlayerCorporation{deal.Corporations[resp.Corporation], false}
+
+			hand, discarded := getSelectedCards(deal.Cards, resp.Cards)
+			p.Hand = hand
+			g.Discard(discarded...)
+
+			preludes := []*Prelude{}
+			for _, pr := range resp.Preludes {
+				preludes = append(preludes, deal.Preludes[pr])
+			}
+			p.PlayedPreludes = preludes
+
 			wg.Done()
 		}(p)
 	}
@@ -240,7 +276,158 @@ func (g *Game) Start() {
 	g.UpdatePlayers()
 }
 
-func (g *Game) DealCorporations(num int) []*Corporation {
+func (g *Game) PlayTurn() bool {
+	p := g.Players[g.CurrentPlayer]
+
+	p.SendMessage(Message{Code: YourTurnCode})
+	// loop to process until message to pass or done
+	receiveLoop:
+	for {
+		m, _, _ := p.ReceiveMessage() // TODO: handle disconnect
+		switch m.Code {
+		case PlayCardCode:
+			var pyld struct{Card int `json:"card"`}
+			m.GetContent(&pyld)
+			var selected *Card
+			selected, p.Hand = getSelectedCard(p.Hand, pyld.Card)
+			p.PlayedCards = append(p.PlayedCards, PlayedCard{Card: selected})
+
+		case DrawCardsCode:
+			var pyld struct{Amount int `json:"amount"`}
+			m.GetContent(&pyld)
+			deal := g.DrawCards(pyld.Amount)
+			p.SendMessage(Message{DrawCardsCode, struct{Cards []*Card `json:"cards"`}{deal}})
+
+			m, _, _ = p.ReceiveMessage()
+			var chosenPyld struct{Cards []int `json:"cards"`}
+			m.GetContent(&chosenPyld)
+			chosen, discarded := getSelectedCards(p.Hand, chosenPyld.Cards)
+			p.Hand = append(p.Hand, chosen...)
+			g.Discard(discarded...)
+
+		case DiscardCardsCode:
+			var pyld struct{Cards []int `json:"cards"`}
+			m.GetContent(&pyld)
+			var selected []*Card
+			selected, p.Hand = getSelectedCards(p.Hand, pyld.Cards)
+			g.Discard(selected...)
+
+		case DrawPreludesCode:
+			var pyld struct{Amount int `json:"amount"`}
+			m.GetContent(&pyld)
+			deal := g.DrawPreludes(pyld.Amount)
+			p.SendMessage(Message{DrawPreludesCode, struct{Preludes []*Prelude `json:"prelude"`}{deal}})
+
+			m, _, _ = p.ReceiveMessage()
+			var chosenPyld struct{Preludes []int `json:"preludes"`}
+			m.GetContent(&chosenPyld)
+			for _, pr := range chosenPyld.Preludes {
+				p.PlayedPreludes = append(p.PlayedPreludes, deal[pr])
+			}
+
+		case DoneTurnCode:
+			break receiveLoop
+
+		case PassCode:
+			p.Passed = true
+			break receiveLoop
+		}
+		g.UpdatePlayers()
+	}
+
+	// If all players are passed, the round is done
+	done := true
+	for _, pl := range g.Players {
+		if !pl.Passed {
+			done = false
+			break
+		}
+	}
+	if done {
+		return true
+	}
+
+	for {
+		g.CurrentPlayer = (g.CurrentPlayer + 1) % len(g.Players)
+		if !g.Players[g.CurrentPlayer].Passed {
+			break
+		}
+	}
+	return false
+}
+
+func (g *Game) NextGeneration() {
+	//draw cards and pass
+	cardSets := [][]*Card{}
+	for i := 0; i < len(g.Players); i++ {
+		cardSets = append(cardSets, g.DrawCards(4))
+	}
+
+	for _, p := range g.Players {
+		p.PossibleCards = []*Card{}
+	}
+
+	for i := 0; i < 4; i++ {
+		var wg sync.WaitGroup
+		wg.Add(len(g.Players))
+		for j, p := range g.Players {
+			var cards []*Card
+			if g.PassDirection == LeftPassDirection { // Left, or clockwise, is defined as passing in the positive direction
+				cards = cardSets[(i+j) % len(g.Players)]
+			} else {
+				cards = cardSets[(i-j) % len(g.Players)]
+			}
+			
+			go func(cards *[]*Card, p *Player) {
+				p.SendMessage(Message{BetweenGensCode, *cards})
+				m, _, _ := p.ReceiveMessage()
+				if (i < 4) {
+					var choice struct{Card int `json:"card"`}
+					m.GetContent(choice)
+					var chosen *Card
+					chosen, *cards = getSelectedCard(*cards, choice.Card)
+					p.PossibleCards = append(p.PossibleCards, chosen)
+				} else {
+					var choice struct{Cards []int `json:"cards"`}
+					m.GetContent(choice)
+					selected, discarded := getSelectedCards(p.PossibleCards, choice.Cards)
+					p.Hand = append(p.Hand, selected...)
+					g.Discard(discarded...)
+				}
+				
+				wg.Done()
+			}(&cards, p)
+		}
+		wg.Wait()
+	}
+
+	g.Player1 = (g.Player1 + 1) % len(g.Players)
+	g.CurrentPlayer = g.Player1
+	if g.PassDirection == LeftPassDirection {
+		g.PassDirection = RightPassDirection
+	} else {
+		g.PassDirection = LeftPassDirection
+	}
+	
+	g.UpdatePlayers()
+}
+
+//-------------------------------------------------------------------
+//----------------------------   Helpers   --------------------------
+//-------------------------------------------------------------------
+
+func GetUnstartedGames() []*Game {
+	unstarted := []*Game{}
+	for _, g := range Games {
+		if (!g.Started()) {
+			unstarted = append(unstarted, g)
+		}
+	}
+
+	return unstarted
+}
+
+func (g *Game) DrawCorporations(num int) []*Corporation {
 	g.Lock.Lock()
 	corporations := g.CorporationDeck[:num]
 	g.CorporationDeck = g.CorporationDeck[num:]
@@ -248,15 +435,7 @@ func (g *Game) DealCorporations(num int) []*Corporation {
 	return corporations
 }
 
-func (g *Game) DealCards(num int) []*Card {
-	g.Lock.Lock()
-	cards := g.Deck[:num]
-	g.Deck = g.Deck[num:]
-	g.Lock.Unlock()
-	return cards
-}
-
-func (g *Game) DealPreludes(num int) []*Prelude {
+func (g *Game) DrawPreludes(num int) []*Prelude {
 	g.Lock.Lock()
 	preludes := g.PreludeDeck[:num]
 	g.PreludeDeck = g.PreludeDeck[num:]
@@ -264,10 +443,29 @@ func (g *Game) DealPreludes(num int) []*Prelude {
 	return preludes
 }
 
+func (g *Game) DrawCards(num int) []*Card {
+	g.Lock.Lock()
+	if num > len(g.Deck) {
+		rand.Shuffle(len(g.DiscardPile), func(i, j int) {g.DiscardPile[i], g.DiscardPile[j] = g.DiscardPile[j], g.DiscardPile[i]})
+		g.Deck = append(g.Deck, g.DiscardPile...)
+		g.DiscardPile = []*Card{}
+	}
+	cards := g.Deck[:num]
+	g.Deck = g.Deck[num:]
+	g.Lock.Unlock()
+	return cards
+}
+
 func (g *Game) Discard(discarded ...*Card) {
 	g.Lock.Lock()
 	g.DiscardPile = append(g.DiscardPile, discarded...)
 	g.Lock.Unlock()
+}
+
+func (g *Game) UpdatePlayers() {
+	for _, p := range g.Players {
+		p.SendMessage(Message{UpdateCode, struct {Game *Game `json:"game"`;	Hand []*Card `json:"hand"`}{g, p.Hand}})
+	}
 }
 
 func (g *Game) Done() bool {
@@ -279,29 +477,4 @@ func (g *Game) Done() bool {
 		}
 	}
 	return len(g.Players) == 0 || noneAlive
-}
-
-func (g *Game) SendToAll(m Message) {
-	for _, p := range g.Players {
-		p.SendMessage(m)
-	}
-}
-
-// func (g *Game) SendToAllExcept(m Message, except *Player) {
-// 	for _, p := range g.Players {
-// 		if p != except {
-// 			p.SendMessage(m)
-// 		}
-// 	}
-// }
-
-type UpdatePayload struct {
-	Game *Game `json:"game"`
-	Hand []*Card `json:"hand"`
-}
-
-func (g *Game) UpdatePlayers() {
-	for _, p := range g.Players {
-		p.SendMessage(Message{UpdateCode, UpdatePayload{g, p.Hand}})
-	}
 }

@@ -1,3 +1,171 @@
+body, main, .fullscreen {
+    height: 100vh;
+    width: 100vw;
+    margin: 0;
+}
+
 .source-player {
     background-color: yellowgreen;
+}
+
+#first-gen-grid {
+    display: grid;
+    grid-template-rows: 1fr 1fr 1fr 3em;
+}
+/*---------------------------------------------------------------------------*/
+/*-----------------------         Card Display     --------------------------*/
+/*---------------------------------------------------------------------------*/
+
+.card-brief {
+    border-radius: 20px;
+    border-top: 4px solid rgb(221,221,221);
+    border-left: 4px solid rgb(221,221,221);
+    border-bottom: 4px solid rgb(137,137,137);
+    border-right: 4px solid rgb(137,137,137);
+    box-shadow: 0 0 2px 1px black;
+
+    position: relative;
+    height: 10em;
+    width: 10em;
+    margin: 0.5em;
+    background-color: rgb(204, 204, 204);
+
+    padding: 0.5em;
+}
+
+.top-bar {
+    height: 2em;
+    border-bottom: 1px solid rgb(137,137,137);
+}
+
+.card-type {
+    margin: -1.8em 0 0 0.5em;
+}
+
+.card-type .corporation {
+    border-top: 2px solid rgb(221,221,221);
+    border-left: 2px solid rgb(221,221,221);
+    border-bottom: 2px solid rgb(137,137,137);
+    border-right: 2px solid rgb(137,137,137);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 60%), 0 0 0 2px rgb(0 0 0 / 30%);
+
+    padding: 1px 4px;
+    display: inline-block;
+
+    background-color: rgb(255,204,100);
+    background: linear-gradient(to right, #e28c22, rgb(255,204,100),rgb(255,204,100), #e28c22);
+    border-radius: 7px 7px 2px 2px;
+
+    font-size: 0.7em;
+}
+
+.card-brief.title {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.card {
+    position: relative;
+    height: 50em;
+    width: 20em;
+    margin: 2em;
+}
+
+#first-gen-grid > div {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#first-gen-grid > div+div {
+    border-top: 2px solid black;
+}
+
+
+
+/* Tags */
+
+.tag {
+    position: absolute;
+
+    margin: -6px;
+
+    border-radius: 50%;
+    border-top: 2px solid rgb(221,221,221);
+    border-left: 2px solid rgb(221,221,221);
+    border-bottom: 2px solid rgb(137,137,137);
+    border-right: 2px solid rgb(137,137,137);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 60%), 0 0 0 2px rgb(0 0 0 / 30%);
+
+    background-size: 2em;
+    height: 2em;
+    width: 2em;
+}
+
+.tag1 {
+    top: 0;
+    right: 0;
+}
+
+.tag2 {
+    top: 0;
+    right: 2.5em;
+}
+
+.tag3 {
+    top: 0;
+    right: 5em;
+}
+
+.tag-animal {
+    background-image: url("./images/animal.png");
+}
+
+.tag-building {
+    background-image: url("./images/building.png");
+}
+
+.tag-city {
+    background-image: url("./images/city.png");
+}
+
+.tag-earth {
+    background-image: url("./images/earth.png");
+}
+
+.tag-energy {
+    background-image: url("./images/energy.png");
+}
+
+.tag-event {
+    background-image: url("./images/event.png");
+}
+
+.tag-jovian {
+    background-image: url("./images/jovian.png");
+}
+
+.tag-microbe {
+    background-image: url("./images/microbe.png");
+}
+
+.tag-plant {
+    background-image: url("./images/plant.png");
+}
+
+.tag-power {
+    background-image: url("./images/power.png");
+}
+
+.tag-science {
+    background-image: url("./images/science.png");
+}
+
+.tag-space {
+    background-image: url("./images/space.png");
+}
+
+.tag-wild {
+    background-image: url("./images/wild.png");
 }

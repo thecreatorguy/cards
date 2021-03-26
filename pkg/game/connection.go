@@ -22,6 +22,7 @@ type ErrorMessage struct {
 
 type MessageCode string
 const (
+	ErrorMessageCode = MessageCode("error")
 	PingCode = MessageCode("ping")
 	SetupCode = MessageCode("setup")
 	HostGameCode = MessageCode("host_game")
@@ -30,7 +31,16 @@ const (
 	UpdateLobbySettingsCode = MessageCode("update_lobby_settings")
 	StartGameCode = MessageCode("start_game")
 	FirstGenCode = MessageCode("first_gen")
-	ErrorMessageCode = MessageCode("error")
+
+	YourTurnCode = MessageCode("your_turn")
+	PlayCardCode = MessageCode("play_card")
+	DrawCardsCode = MessageCode("draw_cards")
+	DiscardCardsCode = MessageCode("discard_cards")
+	DrawPreludesCode = MessageCode("draw_preludes")
+	PlayPreludeCode = MessageCode("play_prelude")
+	DoneTurnCode = MessageCode("done_turn")
+	PassCode = MessageCode("pass")
+	BetweenGensCode = MessageCode("between_gens")
 )
 type Message struct {
 	Code MessageCode `json:"code"`
@@ -62,6 +72,7 @@ func makeConnection(w http.ResponseWriter, r *http.Request) {
     }
 
 	if s, ok := Sessions[id]; ok {
+		// if s.Alive()
 		// check if original is still alive, if it is then terminate this one
 		// if not, replace connection. if in game, let game know. if not, start lobby
 		s.Conn = conn

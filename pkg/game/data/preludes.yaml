@@ -1,0 +1,24 @@
+---
+- name: Allied Banks
+  tags: [earth]
+
+- name: Aquifer Turbines
+  tags: [energy]
+
+- name: Biofuels
+  tags: [microbe]
+
+- name: Biolab
+  tags: [science]
+
+- name: Biosphere Support
+  tags: [plant]
+
+- name: Business Empire
+  tags: [earth]
+
+- name: Dome Farming
+  tags: [plant, building]
+
+- name: Donation
+  tags: []

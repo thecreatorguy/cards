@@ -8,11 +8,13 @@
   <link rel="stylesheet" href="{{.AssetsPrefix}}/style.css">
   <meta name="theme-color" content="#fafafa">
   <script src="https://kit.fontawesome.com/692d0a4337.js" crossorigin="anonymous"></script>
+  <script src="{{.AssetsPrefix}}/game.js" defer></script>
 </head>
 
 <body>
   <main id="main">
-    <div id="setup" hidden>
+
+    <div id="setup-view" class="fullscreen" hidden>
       <h1>Setup</h1>
       <div id="lobbyname">
         <label for="lobby-name-input">Lobby Name:</label>
@@ -22,7 +24,8 @@
       <input type="text" id="nickname-input" name="nickname-input" required>
       <button id="submit-setup">Submit</button>
     </div>
-    <div id="lobby" hidden>
+
+    <div id="lobby-view" class="fullscreen" hidden>
       <h1>Lobby</h1>
       <label for="corp-cards-input">Use Corporate Cards:</label>
       <input type="checkbox" id="corp-cards-input" name="corp-cards-input" disabled><br>
@@ -31,14 +34,26 @@
       <ol id="player-list"></ol>
       <button id="start-game" hidden>Start Game</button>
     </div>
-    <div id="game" hidden>
+
+    <div id="first-gen-view" class="fullscreen" hidden>
+      <div id="first-gen-grid" class="fullscreen">
+        <div class="corporations"></div>
+        <div class="preludes"></div>
+        <div class="cards"></div>
+        <div>
+          <button id="submit-first-gen">Submit</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="game-view" class="fullscreen" hidden>
       tesy
     </div>
+
   </main>
   <script id="json-data" type="application/json">{
     "base_path": "{{.BasePath}}"
   }</script>
-  <script src="{{.AssetsPrefix}}/game.js"></script>
 </body>
 
 </html>

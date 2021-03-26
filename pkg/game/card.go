@@ -21,7 +21,8 @@ const (
 	EventType 		= "event"
 )
 
-var CorporationCards	= []*Corporation{}
+var Corporations		= []*Corporation{}
+var Preludes			= []*Prelude{}
 var BaseCards 			= []*Card{}
 var CorporateCards 		= []*Card{}
 var PreludeCards 		= []*Prelude{}
@@ -61,10 +62,42 @@ type PlayedCard struct {
 type Corporation struct {
 	Name string `json:"name"`
 	Tags []string `json:"tags"`
-	StartMaterials []string `json:"start_materials"`
+	Content interface{} `json:"content"`
+}
+
+type PlayerCorporation struct {
+	*Corporation `json:"corporation"`
+	Used bool `json:"used"`
 }
 
 type Prelude struct {
 	Name string `json:"name"`
 	Tags []string `json:"tags"`
+	Content interface{} `json:"content"`
+}
+
+func getSelectedCard(cards []*Card, index int) (chosen *Card, notChosen []*Card) {
+	chosen = cards[index]
+	notChosen = append(append([]*Card{}, cards[:index]...), cards[index+1:]...)
+	return
+}
+
+func getSelectedCards(cards []*Card, indices []int) (chosen []*Card, notChosen []*Card) {
+	for i, c := range cards {
+		if intIn(i, indices) {
+			chosen = append(chosen, c)
+		} else {
+			notChosen = append(notChosen, c)
+		}
+	}
+	return
+}
+
+func intIn(inval int, set []int) bool {
+	for _, v := range set {
+		if v == inval {
+			return true
+		}
+	}
+	return false
 }

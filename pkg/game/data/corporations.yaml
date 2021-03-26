@@ -1,0 +1,29 @@
+---
+- name: credicor
+  tags: []
+  content: 
+    start_with:
+      credits: 57
+    text: (You start with 57 MC.)
+    effect:
+      per:
+        left:
+          money: -20
+        right:
+          money: 4
+      text: "(Effect: After you pay for a card or standard project with a basic cost of 20MC or more, you gain 4MC.)"
+
+- name: ecoline
+  tags: [plant]
+
+- name: helion
+  tags: [space]
+
+- name: Mining Guild
+  tags: [building, building]
+
+- name: Interplanetary Cinematics
+  tags: [building]
+  
+- name: X Inventrix
+  tags: [science]
