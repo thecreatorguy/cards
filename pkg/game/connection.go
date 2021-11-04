@@ -72,10 +72,9 @@ func makeConnection(w http.ResponseWriter, r *http.Request) {
     }
 
 	if s, ok := Sessions[id]; ok {
-		// if s.Alive()
-		// check if original is still alive, if it is then terminate this one
-		// if not, replace connection. if in game, let game know. if not, start lobby
-		s.Conn = conn
+		if !s.Alive() {
+			s.Reconnected(conn)
+		}
 	} else {
 		s := NewSession(id, conn)
 		s.SendMessage(Message{Code: SetupCode})
@@ -89,12 +88,23 @@ var Sessions = map[string]*Session{}
 type Session struct {
 	ID string
 	Conn *websocket.Conn
-	ReadLock *sync.Mutex
-	WriteLock *sync.Mutex
+	alive bool
+	readLock *sync.Mutex
+	writeLock *sync.Mutex
+	reconnecting bool
+	reconnectChan chan bool
 }
 
 func NewSession(id string, conn *websocket.Conn) *Session {
-	s := &Session{id, conn, &sync.Mutex{}, &sync.Mutex{}}
+	s := &Session{
+		ID: id,
+		Conn: conn,
+		alive: true,
+		readLock: &sync.Mutex{},
+		writeLock: &sync.Mutex{},
+		reconnecting: false,
+		reconnectChan: make(chan bool),
+	}
 	Sessions[id] = s
 	return s
 }
@@ -103,12 +113,13 @@ func (s *Session) Lobby() {
 	for {
 		m, closed, err := s.ReceiveMessage()
 		if closed {
-			delete(Sessions, s.ID)
+			s.Cleanup()
 			break
 		}
 		if err != nil {
 			closed, err := s.SendMessage(Message{ErrorMessageCode, ErrorMessage{FailedDecodingError, err.Error()}})
 			if closed {
+				s.Cleanup()
 				break
 			}
 			if err != nil {
@@ -132,6 +143,7 @@ func (s *Session) Lobby() {
 			s.SendInvalidCode()
 		}		
 	}
+
 }
 
 var closedStatuses = []int{
@@ -143,17 +155,17 @@ var closedStatuses = []int{
 func (s *Session) ReceiveMessage() (Message, bool, error) {
 	var m Message
 
-	s.ReadLock.Lock()
+	s.readLock.Lock()
 	err := s.Conn.ReadJSON(&m)
-	s.ReadLock.Unlock()
+	s.readLock.Unlock()
 	
 	return m, websocket.IsCloseError(err, closedStatuses...), err
 }
 
 func (s *Session) SendMessage(m Message) (bool, error) {
-	s.WriteLock.Lock()
+	s.writeLock.Lock()
 	err := s.Conn.WriteJSON(m)
-	s.WriteLock.Unlock()
+	s.writeLock.Unlock()
 
 	return websocket.IsCloseError(err, closedStatuses...), err
 }
@@ -170,4 +182,29 @@ func (s *Session) Alive() bool {
 
 func (s *Session) SendInvalidCode() {
 	s.SendMessage(Message{ErrorMessageCode, ErrorMessage{InvalidMessageCodeError, "Invalid message code"}})
+}
+
+func (s *Session) WaitForReconnect() bool {
+	s.reconnecting = true
+	val := <-s.reconnectChan
+	s.reconnecting = false
+	return val
+}
+
+func (s *Session) Reconnected(conn *websocket.Conn) {
+	s.Conn = conn
+	SessionToGame[s.ID].UpdatePlayers()
+	if (s.reconnecting) {
+		s.reconnectChan <- true
+	}
+}
+
+func (s *Session) Wake() {
+	if (s.reconnecting) {
+		s.reconnectChan <- false
+	}
+}
+
+func (s *Session) Cleanup() {
+	delete(Sessions, s.ID)
 }

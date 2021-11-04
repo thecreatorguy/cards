@@ -54,7 +54,7 @@ type Game struct {
 	Player1 int `json:"player1"`
 	CurrentPlayer int `json:"current_player"`
 	PassDirection string `json:"pass_direction"`
-	Lock *sync.Mutex `json:"-"`
+	lock *sync.Mutex `json:"-"`
 }
 
 var Games = map[string]*Game{}
@@ -116,7 +116,7 @@ func NewGame(host *Session, lobbyName, nickname string) {
 		},
 		Players: []*Player{p},
 		Host: p,
-		Lock: &sync.Mutex{},
+		lock: &sync.Mutex{},
 	}
 
 	go g.Run()
@@ -145,10 +145,14 @@ func (g *Game) Run() {
 	}
 	g.UpdatePlayers()
 
+	runloop:
 	for !g.Done() {
 		switch g.State {
 		case InLobbyState:
-			m, _, _ := g.Host.ReceiveMessage() // TODO: handle host dropping out
+			m, ok := g.GetMessage(g.Host)
+			if !ok {
+				break runloop
+			}
 			switch m.Code {
 			case UpdateLobbySettingsCode:
 				g.UpdateLobbySettings(m)
@@ -164,8 +168,9 @@ func (g *Game) Run() {
 			}
 		}
 	}
-
+	
 	for _, p := range g.Players {
+		p.Cleanup()
 		delete(SessionToGame, p.ID)
 	}
 	delete(Games, g.LobbyName)
@@ -196,12 +201,6 @@ func (g *Game) UpdateLobbySettings(m Message) {
 //-------------------------------------------------------------------
 //----------------------------   In Game   --------------------------
 //-------------------------------------------------------------------
-
-type Test struct {
-	Corporations []*Corporation `json:"corporations"`
-	Cards []*Card `json:"cards"`
-	Preludes []*Prelude `json:"preludes"`
-}
 
 func (g *Game) Start() { 
 	g.State = InGameState
@@ -234,7 +233,11 @@ func (g *Game) Start() {
 	wg.Add(len(g.Players))
 	for _, p := range g.Players {
 		go func(p *Player) {
-			deal := Test{
+			deal := struct {
+				Corporations []*Corporation `json:"corporations"`
+				Cards []*Card `json:"cards"`
+				Preludes []*Prelude `json:"preludes"`
+			}{
 				Corporations: g.DrawCorporations(3),
 				Cards: g.DrawCards(10),
 				Preludes: g.DrawPreludes(4),
@@ -248,7 +251,11 @@ func (g *Game) Start() {
 				log.Println(err)
 			}
 
-			m, _, _ := p.ReceiveMessage()
+			m, ok := g.GetMessage(p)
+			if !ok {
+				return
+			}
+
 			var resp struct {
 				Corporation int `json:"corporation"`
 				Cards []int `json:"cards"`
@@ -283,7 +290,10 @@ func (g *Game) PlayTurn() bool {
 	// loop to process until message to pass or done
 	receiveLoop:
 	for {
-		m, _, _ := p.ReceiveMessage() // TODO: handle disconnect
+		m, ok := g.GetMessage(p)
+		if !ok {
+			return false
+		}
 		switch m.Code {
 		case PlayCardCode:
 			var pyld struct{Card int `json:"card"`}
@@ -298,7 +308,10 @@ func (g *Game) PlayTurn() bool {
 			deal := g.DrawCards(pyld.Amount)
 			p.SendMessage(Message{DrawCardsCode, struct{Cards []*Card `json:"cards"`}{deal}})
 
-			m, _, _ = p.ReceiveMessage()
+			m, ok = g.GetMessage(p)
+			if !ok {
+				return false
+			}
 			var chosenPyld struct{Cards []int `json:"cards"`}
 			m.GetContent(&chosenPyld)
 			chosen, discarded := getSelectedCards(p.Hand, chosenPyld.Cards)
@@ -318,7 +331,10 @@ func (g *Game) PlayTurn() bool {
 			deal := g.DrawPreludes(pyld.Amount)
 			p.SendMessage(Message{DrawPreludesCode, struct{Preludes []*Prelude `json:"prelude"`}{deal}})
 
-			m, _, _ = p.ReceiveMessage()
+			m, ok = g.GetMessage(p)
+			if !ok {
+				return false
+			}
 			var chosenPyld struct{Preludes []int `json:"preludes"`}
 			m.GetContent(&chosenPyld)
 			for _, pr := range chosenPyld.Preludes {
@@ -380,7 +396,10 @@ func (g *Game) NextGeneration() {
 			
 			go func(cards *[]*Card, p *Player) {
 				p.SendMessage(Message{BetweenGensCode, *cards})
-				m, _, _ := p.ReceiveMessage()
+				m, ok := g.GetMessage(p)
+				if !ok {
+					return
+				}
 				if (i < 4) {
 					var choice struct{Card int `json:"card"`}
 					m.GetContent(choice)
@@ -399,6 +418,9 @@ func (g *Game) NextGeneration() {
 			}(&cards, p)
 		}
 		wg.Wait()
+		if g.Done() {
+			return
+		}
 	}
 
 	g.Player1 = (g.Player1 + 1) % len(g.Players)
@@ -428,23 +450,23 @@ func GetUnstartedGames() []*Game {
 }
 
 func (g *Game) DrawCorporations(num int) []*Corporation {
-	g.Lock.Lock()
+	g.lock.Lock()
 	corporations := g.CorporationDeck[:num]
 	g.CorporationDeck = g.CorporationDeck[num:]
-	g.Lock.Unlock()
+	g.lock.Unlock()
 	return corporations
 }
 
 func (g *Game) DrawPreludes(num int) []*Prelude {
-	g.Lock.Lock()
+	g.lock.Lock()
 	preludes := g.PreludeDeck[:num]
 	g.PreludeDeck = g.PreludeDeck[num:]
-	g.Lock.Unlock()
+	g.lock.Unlock()
 	return preludes
 }
 
 func (g *Game) DrawCards(num int) []*Card {
-	g.Lock.Lock()
+	g.lock.Lock()
 	if num > len(g.Deck) {
 		rand.Shuffle(len(g.DiscardPile), func(i, j int) {g.DiscardPile[i], g.DiscardPile[j] = g.DiscardPile[j], g.DiscardPile[i]})
 		g.Deck = append(g.Deck, g.DiscardPile...)
@@ -452,29 +474,57 @@ func (g *Game) DrawCards(num int) []*Card {
 	}
 	cards := g.Deck[:num]
 	g.Deck = g.Deck[num:]
-	g.Lock.Unlock()
+	g.lock.Unlock()
 	return cards
 }
 
 func (g *Game) Discard(discarded ...*Card) {
-	g.Lock.Lock()
+	g.lock.Lock()
 	g.DiscardPile = append(g.DiscardPile, discarded...)
-	g.Lock.Unlock()
+	g.lock.Unlock()
+}
+
+func (g *Game) Update(p *Player) {
+	p.SendMessage(Message{UpdateCode, struct {Game *Game `json:"game"`;	Hand []*Card `json:"hand"`}{g, p.Hand}})
 }
 
 func (g *Game) UpdatePlayers() {
 	for _, p := range g.Players {
-		p.SendMessage(Message{UpdateCode, struct {Game *Game `json:"game"`;	Hand []*Card `json:"hand"`}{g, p.Hand}})
+		g.Update(p)
 	}
 }
 
-func (g *Game) Done() bool {
-	noneAlive := true
+func (g *Game) GetMessage(p *Player) (Message, bool) {
+	m, closed, _ := p.ReceiveMessage()
+
+	if closed {
+		if g.Done() || !p.WaitForReconnect() {
+			g.WakeThreads()
+			return m, false
+		}
+		g.Update(p)
+		return g.GetMessage(p)
+	}
+
+	return m, true
+}
+
+func (g *Game) NumDisconnected() int {
+	disconnected := 0
 	for _, p := range g.Players {
-		if p.Alive() {
-			noneAlive = false
-			break
+		if !p.Alive() {
+			disconnected += 1
 		}
 	}
-	return len(g.Players) == 0 || noneAlive
+	return disconnected
+}
+
+func (g *Game) Done() bool {
+	return g.NumDisconnected() == len(g.Players)
+}
+
+func (g *Game) WakeThreads() {
+	for _, p := range g.Players {
+		p.Wake()
+	}
 }
