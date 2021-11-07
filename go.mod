@@ -1,4 +1,4 @@
-module github.com/thecreatorguy/terraforming-mars
+module github.com/thecreatorguy/cards
 
 go 1.16
 
