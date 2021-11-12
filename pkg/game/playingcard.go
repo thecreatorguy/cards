@@ -36,8 +36,8 @@ const (
 var CardValues = []CardValue{Two, Three, Four, Five, Six, Seven, Eight, Nine, Ten, Jack, Queen, King, Ace}
 
 type Card struct {
-	Suit Suit
-	Value CardValue
+	Suit Suit `json:"suit"`
+	Value CardValue `json:"value"`
 }
 
 type Deck []Card

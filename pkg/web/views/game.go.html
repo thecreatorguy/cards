@@ -1,0 +1,72 @@
+{{define "game" -}}
+<!doctype html>
+<html class="no-js" lang="">
+
+<head>
+  <meta charset="utf-8">
+  <title>Card Games</title>
+  <link rel="stylesheet" href="{{.AssetsPrefix}}/style.css">
+  <meta name="theme-color" content="#fafafa">
+  <script src="https://kit.fontawesome.com/692d0a4337.js" crossorigin="anonymous"></script>
+  <script src="{{.AssetsPrefix}}/game.js" defer></script>
+</head>
+
+<body>
+  <main id="main">
+
+    <div id="setup-view" class="fullscreen view hidden">
+      <h1>Setup</h1>
+      <div id="lobbyname">
+        <label for="lobby-name-input">Lobby Name:</label>
+        <input type="text" id="lobby-name-input" name="lobby-name-input" required>
+      </div>
+      <label for="nickname-input">Nickname:</label>
+      <input type="text" id="nickname-input" name="nickname-input" required>
+      <button id="submit-setup">Submit</button>
+    </div>
+
+    <div id="lobby-view" class="fullscreen view hidden">
+      <h1>Lobby</h1>
+      <h2>Settings</h2>
+      <label id="max-points-label" for="max-points-input">Max Points:</label>
+      <input id="max-points-input" type="number" min="0" disabled>
+      <ol id="player-list"></ol>
+      <label id="cpu-name-label" for="cpu-name-input">CPU Name:</label>
+      <input id="cpu-name-input" hidden>
+      <button id="add-cpu" hidden>Add CPU</button>
+      <br>
+      <button id="start-game" hidden>Start Game</button>
+    </div>
+
+    <div id="game-view" class="fullscreen view hidden">
+      <div id="game-window">
+        <div id="player-across"></div>
+        <div id="player-left"></div>
+        <div id="player-right"></div>
+        <div id="current-trick"></div>
+        <div id="player-info"></div>
+        <div id="game-info">
+          <div id="max-points-info"></div>
+          <div id="pass-direction-info"></div>
+          <div id="info-message"></div>
+        </div>
+      </div>
+    </div>
+
+  
+  </main>
+
+  <div class="hidden">
+    <img id="clubs-img" width="30" src="{{.AssetsPrefix}}/images/clubs.png">
+    <img id="hearts-img" width="30" src="{{.AssetsPrefix}}/images/hearts.png">
+    <img id="spades-img" width="30" src="{{.AssetsPrefix}}/images/spades.png">
+    <img id="diamonds-img" width="30" src="{{.AssetsPrefix}}/images/diamonds.png">
+  </div>
+
+  <script id="json-data" type="application/json">{
+    "base_path": "{{.BasePath}}"
+  }</script>
+</body>
+
+</html>
+{{- end}}

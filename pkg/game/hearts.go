@@ -32,11 +32,14 @@ type HeartsGame struct {
 	CurrentTrick Deck
 	HeartsBroken bool
 	MaxPoints int
+	Leader string
 }
 
 type PlayerInfo struct {
 	NumCards int `json:"numCards"`
 	Score int `json:"score"`
+	RoundPoints int `json:"roundPoints"`
+	Lead bool `json:"lead"`
 }
 
 type HeartsGameInfo struct {
@@ -44,8 +47,8 @@ type HeartsGameInfo struct {
 	PlayerOrder []string `json:"playerOrder"`
 	PassDirection PassDirection `json:"passDirection"`
 	CurrentTrick Deck `json:"currentTrick"`
-	HeartsBroken bool `json:"HeartsBroken"`
-	MaxPoints int `json:"MaxPoints"`
+	HeartsBroken bool `json:"heartsBroken"`
+	MaxPoints int `json:"maxPoints"`
 	Hand Deck `json:"hand"`
 }
 
@@ -78,6 +81,8 @@ func (g *HeartsGame) GetDeciderInfo(decider Decider) interface{} {
 		playerInfo[name] = PlayerInfo{
 			NumCards: len(player.Hand),
 			Score: player.Score,
+			RoundPoints: player.roundPoints,
+			Lead: name == g.Leader,
 		}
 	}
 
@@ -148,7 +153,6 @@ func (g *HeartsGame) FirstTrick() bool {
 }
 
 func (g *HeartsGame) PlayRound() {
-
 	// Hand out the next set of cards
 	d := NewDeck()
 	d.Shuffle()
@@ -212,7 +216,7 @@ func (g *HeartsGame) PlayRound() {
 		g.GetPlayer(i).roundPoints = 0
 	}
 	for trick := 0; trick < 13; trick++ {
-		g.CurrentTrick = Deck{}
+		g.Leader = g.PlayerOrder[leader]
 		var highestTrump int
 		var highestValue int
 		for i := 0; i < 4; i++ {
@@ -229,9 +233,8 @@ func (g *HeartsGame) PlayRound() {
 		leader = (leader + highestTrump) % 4
 		g.GetPlayer(leader).roundPoints += PointValue(g.CurrentTrick)
 		
-
+		g.CurrentTrick = Deck{}
 		g.NotifyAll()
-
 	}
 
 	// Score the round
@@ -300,35 +303,38 @@ func (p *Player) PlayOnTrick(game *HeartsGame) Card {
 
 		card := p.Hand[index]
 		if game.LeadSuit() == nil {
-			if game.FirstTrick() && (card.Suit != Clubs && card.Value != Two) {
-				p.Decider.ShowInfo("Must play 2 of clubs")
+			if game.FirstTrick() && (card.Suit != Clubs || card.Value != Two) {
+				p.Decider.ShowInfo("Must lead with the 2 of clubs")
 				continue
 			}
-			leadingNotHearts := card.Suit != Hearts
-			leadingHearts := card.Suit == Hearts && game.HeartsBroken
-			if leadingNotHearts || leadingHearts {
-				p.Hand = append(p.Hand[:index], p.Hand[index+1:]...)
-				return card
+			if card.Suit == Hearts && !game.HeartsBroken {
+				p.Decider.ShowInfo("Hearts not broken, lead with another suit")
+				continue
 			}
+
+			p.Hand = append(p.Hand[:index], p.Hand[index+1:]...)
+			return card
 		} else {
 			leadSuit := *game.LeadSuit()
 			isLeadSuit := leadSuit == card.Suit
-			playingCardOutOfSuit := !p.HasSuit(leadSuit)
-			firstTrickHearts := game.FirstTrick() && (card.Suit == Hearts || card.Suit == Spades && card.Value == Queen)
-			if firstTrickHearts && (p.HasSuit(Clubs) || p.HasSuit(Diamonds) || p.Hand.ContainsNonQueenSpade()) {
-				p.Decider.ShowInfo("Cannot play heart on the first trick unless you have no alternative")
+			if !isLeadSuit && p.HasSuit(leadSuit) {
+				p.Decider.ShowInfo("Must play the lead suit: " + string(leadSuit))
 				continue
 			}
-			if isLeadSuit || playingCardOutOfSuit {
-				if playingCardOutOfSuit && (card.Suit == Hearts || card.Suit == Spades && card.Value == Queen) {
-					game.HeartsBroken = true
-				}
-				p.Hand = append(p.Hand[:index], p.Hand[index+1:]...)
-				return card
-			}
-		}
 
-		p.Decider.ShowInfo("Invalid Card")
+			playingHeart := card.Suit == Hearts || card.Suit == Spades && card.Value == Queen
+			hasNonHeartCard := p.HasSuit(Clubs) || p.HasSuit(Diamonds) || p.Hand.ContainsNonQueenSpade()
+			if game.FirstTrick() && playingHeart && hasNonHeartCard {
+				p.Decider.ShowInfo("Cannot play heart or QoS on the first trick unless you have no alternative")
+				continue
+			}
+			
+			if playingHeart {
+				game.HeartsBroken = true
+			}
+			p.Hand = append(p.Hand[:index], p.Hand[index+1:]...)
+			return card
+		}
 	}
 }
 

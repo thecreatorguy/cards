@@ -1,0 +1,140 @@
+* {
+    box-sizing: border-box;
+}
+
+body, main, .fullscreen {
+    height: 100vh;
+    width: 100vw;
+    margin: 0;
+}
+
+.view {
+    padding: 2em;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.source-player {
+    background-color: yellowgreen;
+}
+
+.cpu {
+    display: inline-block;
+    padding: 0 3px;
+    font-weight: bold;
+}
+
+/*---------------------------------------------------------------------------*/
+/*-----------------------         Card Display     --------------------------*/
+/*---------------------------------------------------------------------------*/
+
+#game-view {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#game-window {
+    width: 800px;
+    height: 500px;
+    position: relative;
+    border: 1px solid black;
+}
+
+#player-across {
+    width: 400px;
+    height: 100px;
+    position: absolute;
+    top: 0px;
+    left: 200px;
+}
+
+#player-left {
+    width: 100px;
+    height: 260px;
+    position: absolute;
+    top: 100px;
+    left: 0px;
+}
+
+#player-right {
+    width: 100px;
+    height: 260px;
+    position: absolute;
+    top: 100px;
+    right: 0px;
+}
+
+#current-trick {
+    width: 120px;
+    height: 120px;
+    position: absolute;
+    top: 190px;
+    left: 340px;
+    border: 1px dashed gray;
+    display: flex;
+    gap: 3px;
+}
+
+#player-info {
+    width: 800px;
+    height: 120px;
+    position: absolute;
+    bottom: 20px;
+}
+
+#game-info {
+    width: 800px;
+    height: 20px;
+    position: absolute;
+    bottom: 0px;
+    border-top: 1px solid gray;
+    display: flex;
+    gap: 2em;
+}
+
+.hand {
+    display: flex;
+    justify-content: center;
+    gap: 3px;
+}
+
+.card {
+    width: 50px;
+    height: 80px;
+    border: 1px solid black;
+    border-radius: 2px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    padding: 3px;
+}
+
+.suit {
+    display: flex;
+    justify-content: center;
+}
+
+.value {
+    display: flex;
+    justify-content: center;
+    font-size: 1.6em;
+}
+
+.passedCard {
+    background-color: yellowgreen;
+}
+
+.leader {
+    background-color: aqua;
+}
+
+.info-bar {
+    display: flex;
+    gap: 1em;
+    padding: 0 1em;
+}
+
