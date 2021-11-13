@@ -86,10 +86,8 @@ func makeConnection(w http.ResponseWriter, r *http.Request) {
     }
 
 	if s, ok := Sessions[id]; ok {
-		fmt.Println("reconnecting")
 		s.Reconnect(conn)		
 	} else {
-		fmt.Println("establishing connection")
 		s := NewSession(id, conn)
 		s.Listen()
 	}
@@ -183,7 +181,6 @@ func (s *Session) Cleanup() {
 }
 
 func (s *Session) Close() {
-	fmt.Println("closing")
 	s.closed = true
 	s.conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(time.Second * 4))
 	s.conn.Close()
@@ -196,7 +193,6 @@ func (s *Session) Listen() {
 		closed := websocket.IsCloseError(err, closedStatuses...)
 		if closed {
 			if s.lobby == nil {
-				fmt.Println("here")
 				s.Cleanup()
 			} else {
 				s.Close()
