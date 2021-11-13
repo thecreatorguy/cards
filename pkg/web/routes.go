@@ -23,11 +23,13 @@ var (
 	views embed.FS
 )
 
-func AddRoutes(r *mux.Router, basePath string) {
+func AddRoutes(r *mux.Router, basePath string, faviconPath string) {
 	fsys, err := fs.Sub(assets, "static")
 	if err != nil {
 		panic(err)
 	}
+
+	r.Use(sessionMiddleware)
 
 	templates := template.Must(template.ParseFS(views, "views/*"))
 
@@ -35,18 +37,32 @@ func AddRoutes(r *mux.Router, basePath string) {
 		http.StripPrefix(basePath + AssetsPrefix, http.FileServer(http.FS(fsys))),
 	)
 
-	r.HandleFunc(basePath + "/waitingroom", handleWaitingRoom(basePath, templates)).Methods("GET")
+	r.HandleFunc(basePath + "/waitingroom", handleWaitingRoom(basePath, faviconPath, templates)).Methods("GET")
 	r.HandleFunc(basePath + "/lobby/list", handleLobbyList).Methods("GET")
-	r.HandleFunc(basePath + "/game", handleGame(basePath, templates)).Methods("GET")
+	r.HandleFunc(basePath + "/game", handleGame(basePath, faviconPath, templates)).Methods("GET")
 	r.HandleFunc(basePath + "/game/websocket", makeConnection).Methods("GET")
 }
 
+func sessionMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        _, err := r.Cookie(CookieSessionID)
+		if err != nil {
+			c := &http.Cookie{Name: CookieSessionID, Value: RandomString(30)}
+			r.AddCookie(c)
+			http.SetCookie(w, c)
+		}
+		
+        next.ServeHTTP(w, r)
+    })
+}
+
 // handleApp returns a handler that returns the index page with the correct assets path filled in
-func handleWaitingRoom(basePath string, templates *template.Template) func(w http.ResponseWriter, r *http.Request) {
+func handleWaitingRoom(basePath string, faviconPath string, templates *template.Template) func(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
-	err := templates.ExecuteTemplate(&buf, "waitingroom", struct{BasePath string; AssetsPrefix string}{
+	err := templates.ExecuteTemplate(&buf, "waitingroom", struct{BasePath string; AssetsPrefix string; FaviconPath string}{
 		basePath, 
 		basePath + AssetsPrefix,
+		faviconPath,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -66,11 +82,12 @@ func handleLobbyList(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleApp returns a handler that returns the index page with the correct assets path filled in
-func handleGame(basePath string, templates *template.Template) func(w http.ResponseWriter, r *http.Request) {
+func handleGame(basePath string, faviconPath string, templates *template.Template) func(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
-	err := templates.ExecuteTemplate(&buf, "game", struct{BasePath string; AssetsPrefix string}{
+	err := templates.ExecuteTemplate(&buf, "game", struct{BasePath string; AssetsPrefix string; FaviconPath string}{
 		basePath, 
 		basePath + AssetsPrefix,
+		faviconPath,
 	})
 	if err != nil {
 		log.Fatal(err)

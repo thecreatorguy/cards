@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+const CookieSessionID = "cards-session-id"
 
 func init() {
 	rand.Seed(time.Now().UnixNano())

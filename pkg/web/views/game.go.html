@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="{{.AssetsPrefix}}/style.css">
   <meta name="theme-color" content="#fafafa">
   <script src="https://kit.fontawesome.com/692d0a4337.js" crossorigin="anonymous"></script>
+  <link rel="shortcut icon" href="{{.FaviconPath}}/favicon.ico">
   <script src="{{.AssetsPrefix}}/game.js" defer></script>
 </head>
 
@@ -31,7 +32,7 @@
       <label id="max-points-label" for="max-points-input">Max Points:</label>
       <input id="max-points-input" type="number" min="0" disabled>
       <ol id="player-list"></ol>
-      <label id="cpu-name-label" for="cpu-name-input">CPU Name:</label>
+      <label id="cpu-name-label" for="cpu-name-input" hidden>CPU Name:</label>
       <input id="cpu-name-input" hidden>
       <button id="add-cpu" hidden>Add CPU</button>
       <br>

@@ -14,7 +14,7 @@ import (
 func main() {
 	r := mux.NewRouter()
 
-	web.AddRoutes(r, "")
+	web.AddRoutes(r, "", "")
 
 	port := os.Getenv("PORT")
 	if port == "" {

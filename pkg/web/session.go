@@ -62,17 +62,22 @@ type Session struct {
 	writeLock *sync.Mutex `json:"-"`
 	recieveChannels map[string]chan Message `json:"-"`
 	lobby *Lobby `json:"-"`
+	closed bool `json:"-"`
 }
 
 var Sessions = map[string]*Session{}
 
 func makeConnection(w http.ResponseWriter, r *http.Request) {
-	var id string
-	for _, c := range r.Cookies() {
-		if c.Name == "session" {
-			id = c.Value
-		}
+	c, _ := r.Cookie(CookieSessionID)
+	id := c.Value
+
+	if s, ok := Sessions[id]; ok && !s.closed {
+		// Report a conflict because we already have one
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte("Already made a connection, this is a duplicate"))
+		return
 	}
+
 
 	conn, err := upgrader.Upgrade(w, r, nil)
     if err != nil {
@@ -81,8 +86,10 @@ func makeConnection(w http.ResponseWriter, r *http.Request) {
     }
 
 	if s, ok := Sessions[id]; ok {
-		s.Reconnect(conn)
+		fmt.Println("reconnecting")
+		s.Reconnect(conn)		
 	} else {
+		fmt.Println("establishing connection")
 		s := NewSession(id, conn)
 		s.Listen()
 	}
@@ -93,6 +100,7 @@ func NewSession(id string, conn *websocket.Conn) *Session {
 	s := &Session{
 		ID: id,
 		conn: conn,
+		closed: false,
 		writeLock: &sync.Mutex{},
 		recieveChannels: map[string]chan Message{},
 	}
@@ -170,9 +178,15 @@ func (s *Session) Reconnect(conn *websocket.Conn) {
 }
 
 func (s *Session) Cleanup() {
+	delete(Sessions, s.ID)
+	s.Close()
+}
+
+func (s *Session) Close() {
+	fmt.Println("closing")
+	s.closed = true
 	s.conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(time.Second * 4))
 	s.conn.Close()
-	delete(Sessions, s.ID)
 }
 
 func (s *Session) Listen() {
@@ -182,17 +196,22 @@ func (s *Session) Listen() {
 		closed := websocket.IsCloseError(err, closedStatuses...)
 		if closed {
 			if s.lobby == nil {
+				fmt.Println("here")
 				s.Cleanup()
+			} else {
+				s.Close()
 			}
-			break
+			return
 		}
 		if err != nil {
 			// TODO: fix this to look for more close errors, and retry on regular error
 			s.SendError(FailedDecodingError, err.Error())
 			if s.lobby == nil {
 				s.Cleanup()
+			} else {
+				s.Close()
 			}
-			break
+			return
 		}
 
 		// If waiting for reply, send message to that thread
