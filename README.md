@@ -1,2 +1,2 @@
-# Terraforming Mars Facilitator
-A WebSocket based Terraforming Mars facilitator- doesn't do effects or game board for you.
+# Card Game Webserver
+A WebSocket based card game webserver. Currently plays hearts.
