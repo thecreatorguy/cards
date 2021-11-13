@@ -16,5 +16,4 @@ type Decider interface {
 	ShowInfo(string)
 	GetName() string
 	Notify(GameState)
-	Cleanup(GameState)
 }

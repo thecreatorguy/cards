@@ -141,6 +141,9 @@ let CardsController = {
     },
 
     send(msg) {
+        if (!("id" in msg)) {
+            msg.id = `${1}`;
+        }
         CardsController.conn.send(JSON.stringify(msg))
     },
 
@@ -221,7 +224,6 @@ let CardsController = {
             document.getElementById("submit-setup").onclick = function() {
                 const lobbyName = document.getElementById("lobby-name-input").value;
                 const nickname = document.getElementById("nickname-input").value;
-                CardsController.nickname = nickname;
                 CardsController.send({code: HostGameCode, content: {
                     lobby_name: lobbyName,
                     nickname: nickname
@@ -233,7 +235,6 @@ let CardsController = {
 
             document.getElementById("submit-setup").onclick = function() {
                 const nickname = document.getElementById("nickname-input").value;
-                CardsController.nickname = nickname;
                 CardsController.send({code: JoinGameCode, content: {
                     lobby: LOBBY,
                     nickname: nickname
@@ -351,7 +352,7 @@ let CardsController = {
     },
 
     updateGame(data) {
-        let playerIndex = data.playerOrder.indexOf(CardsController.nickname);
+        let playerIndex = data.playerOrder.indexOf(data.name);
         let leftPlayer = data.playerOrder[(playerIndex + 1) % 4];
         let acrossPlayer = data.playerOrder[(playerIndex + 2) % 4];
         let rightPlayer = data.playerOrder[(playerIndex + 3) % 4];
@@ -378,9 +379,7 @@ let CardsController = {
         const playerInfoContainer = document.createElement("div");
         playerInfoDiv.append(playerInfoContainer);
         playerInfoContainer.classList.add("info-bar")
-        console.log(data)
-        console.log(playerIndex)
-        updatePlayerDashboard(playerInfoContainer, CardsController.nickname, data.playerInfo[CardsController.nickname]);
+        updatePlayerDashboard(playerInfoContainer, data.name, data.playerInfo[data.name]);
         
         const playerHandDiv = document.createElement("div");
         playerInfoDiv.append(playerHandDiv);

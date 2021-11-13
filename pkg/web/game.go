@@ -9,8 +9,6 @@ import (
 
 const (
 	// Recieving Codes
-	HostGameCode = MessageCode("host_game")
-	JoinGameCode = MessageCode("join_game")
 	RefreshCode = MessageCode("refresh")
 	UpdateLobbySettingsCode = MessageCode("update_lobby_settings")
 	StartGameCode = MessageCode("start_game")
@@ -34,6 +32,7 @@ type GameState string
 const (
 	InLobbyState = GameState("in_lobby")
 	InGameState = GameState("in_game")
+	FinishedState = GameState("finished")
 )
 
 type Settings struct {
@@ -45,9 +44,10 @@ type Lobby struct {
 	Settings Settings `json:"settings"`
 	State GameState `json:"state"`
 	Players []*Player `json:"players"`
-	Game game.HeartsGame `json:"-"`
-	listener chan LobbyMessage `json:"-"`
+	Game *game.HeartsGame `json:"-"`
+	messageListener chan LobbyMessage `json:"-"`
 	lock *sync.Mutex `json:"-"`
+	doneListener chan bool `json:"-"`
 }
 
 type Player struct {
@@ -55,6 +55,7 @@ type Player struct {
 	CPU bool `json:"cpu"`
 	Session *Session `json:"-"`
 	AnswerChannel chan Message `json:"-"`
+	ReconnectMessage *Message `json:"-"`
 }
 
 var Lobbies = map[string]*Lobby{}
@@ -65,6 +66,10 @@ var Lobbies = map[string]*Lobby{}
 
 func (l *Lobby) Started() bool {
 	return l.State != InLobbyState
+}
+
+func (l *Lobby) Finished() bool {
+	return l.State == FinishedState
 }
 
 func GetUnstartedLobbies() []*Lobby {
@@ -84,7 +89,6 @@ func StartNewLobby(host *Session, nickname string, lobbyName string) {
 		Settings: Settings{MaxPoints: 100},
 		State: InLobbyState,
 		Players: []*Player{{Name: nickname, CPU: false, Session: host, AnswerChannel: make(chan Message)}},
-		listener: make(chan LobbyMessage),
 		lock: &sync.Mutex{},
 	}
 	host.lobby = lobby
@@ -123,7 +127,7 @@ func (l *Lobby) RemoveCPU(nickname string) {
 
 func (l *Lobby) SendMessage(s *Session, m Message) {
 	l.lock.Lock()
-	l.listener <- LobbyMessage{s, m}
+	l.messageListener <- LobbyMessage{s, m}
 	l.lock.Unlock()
 }
 
@@ -132,20 +136,28 @@ func (l *Lobby) Alive() bool {
 		return false
 	}
 	for _, p := range l.Players {
-		if p.Session.Alive() {
+		if !p.CPU && p.Session.Alive() {
 			return true
 		}
 	}
 	return false
 }
 
-
 func (l *Lobby) Run() {
+	l.messageListener = make(chan LobbyMessage)
+	l.doneListener = make(chan bool)
 	go func() {
 		for {
-			lm, ok := <-l.listener
-			if !ok {
-				break
+			var lm LobbyMessage
+			select {
+			case lm = <-l.messageListener:
+			case <- l.doneListener:
+				l.State = FinishedState
+				if l.Game != nil && !l.Game.GameOver() {
+					l.Game.Cancel()
+				}
+				l.Cleanup()
+				return
 			}
 
 			s := lm.Source
@@ -154,7 +166,7 @@ func (l *Lobby) Run() {
 			switch l.State {
 			case InLobbyState:
 				switch m.Code {
-				case RefreshCode:
+				case ReconnectedCode, RefreshCode:
 					l.Update(p)
 
 				case UpdateLobbySettingsCode:
@@ -193,16 +205,18 @@ func (l *Lobby) Run() {
 					}
 					deciders := []game.Decider{}
 					for _, p := range l.Players {
-						if !p.CPU {
-							deciders = append(deciders, p)
-						} else {
-							deciders = append(deciders, &game.RandomCPU{ID: p.Name})
-						}
+						deciders = append(deciders, p)
 					}
-					l.Game = *game.NewHeartsGame(deciders, l.Settings.MaxPoints)
+					l.Game = game.NewHeartsGame(deciders, l.Settings.MaxPoints)
 					l.State = InGameState
-					go l.Game.Start() // TODO: make sure this goroutine can stop with the lobby
-					
+					go func() {
+						c := l.Game.Start()
+						<-c
+						if !l.Finished() {
+							l.doneListener <- true
+						}
+					}()
+
 				default:
 					s.SendInvalidCodeError(m.Code)
 				}
@@ -211,16 +225,16 @@ func (l *Lobby) Run() {
 				switch m.Code {
 				case RefreshCode:
 					l.Update(p)
+				
+				case ReconnectedCode:
+					p.Reconnect(l)
 
-				case PassedCardsCode:
-				case PlayedCardCode:
+				case PassedCardsCode, PlayedCardCode:
 					p.AnswerChannel <- m
 
 				default:
 					s.SendInvalidCodeError(m.Code)
 				}
-			default:
-				panic("Shouldn't have gotten here")
 			}
 		}
 	}()
@@ -228,12 +242,21 @@ func (l *Lobby) Run() {
 	go func() {
 		for {
 			time.Sleep(30 * time.Second)
-			if !l.Alive() {
-				close(l.listener)
+			if l.Finished() || !l.Alive() {
+				if !l.Finished() {
+					l.doneListener <- true
+				}
+				
 				break
 			}
 		}
 	}()
+}
+
+func (l *Lobby) Cleanup() {
+	for _, p := range l.Players {
+		p.Cleanup()
+	}
 }
 
 func (l *Lobby) GetPlayer(s *Session) *Player {
@@ -270,21 +293,28 @@ func (l *Lobby) UpdateAll() {
 //----------------------------------------------------//
 
 func (p *Player) Decide(q game.Question, g game.GameState) game.Answer {
+	if p.CPU {
+		return game.RandomDecision(p, q, g)
+	}
+
 	hg := g.GetDeciderInfo(p).(*game.HeartsGameInfo)
 	p.Session.SendNewMessage(UpdateCode, hg)
 
-
 	switch q {
 	case game.PassCardsQuestion:
-		p.Session.SendMessage(Message{Code: PassCardsCode})
+		p.ReconnectMessage = &Message{Code: PassCardsCode}
+		p.Session.SendMessage(*p.ReconnectMessage)
 		m := <-p.AnswerChannel
+		p.ReconnectMessage = nil
 		var payload struct{Cards []int `json:"cards"`}
 		m.GetContent(&payload)
 		return payload.Cards
 
 	case game.PlayOnTrickQuestion:
-		p.Session.SendMessage(Message{Code: PlayCardCode})
+		p.ReconnectMessage = &Message{Code: PlayCardCode}
+		p.Session.SendMessage(*p.ReconnectMessage)
 		m := <-p.AnswerChannel
+		p.ReconnectMessage = nil
 		var payload struct{Card int `json:"card"`}
 		m.GetContent(&payload)		
 		return payload.Card
@@ -294,7 +324,9 @@ func (p *Player) Decide(q game.Question, g game.GameState) game.Answer {
 }
 
 func (p *Player) ShowInfo(info string) {
-	p.Session.SendInfo(info)
+	if !p.CPU {
+		p.Session.SendInfo(info)
+	}
 }
 
 func (p *Player) GetName() string {
@@ -302,9 +334,20 @@ func (p *Player) GetName() string {
 }
 
 func (p *Player) Notify(gs game.GameState) {
-	p.Session.lobby.SendMessage(p.Session, Message{Code: RefreshCode})
+	if !p.CPU {
+		p.Session.lobby.SendMessage(p.Session, Message{Code: RefreshCode})
+	}
 }
 
-func (p *Player) Cleanup(gs game.GameState) {
-	p.Notify(gs)
+func (p *Player) Cleanup() {
+	if !p.CPU {
+		p.Session.Cleanup()
+	}
+}
+
+func (p *Player) Reconnect(l *Lobby) {
+	l.Update(p)
+	if p.ReconnectMessage != nil {
+		p.Session.SendMessage(*p.ReconnectMessage)
+	}
 }

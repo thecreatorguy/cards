@@ -50,15 +50,6 @@ func (p *CLIPlayer) Notify(g GameState) {
 	p.Display(hg)
 }
 
-func (p *CLIPlayer) Cleanup(g GameState) {
-	hg := g.GetDeciderInfo(p).(*HeartsGameInfo)
-	p.Display(hg)
-
-	fmt.Println("-----------")
-	fmt.Println("Game Over!")
-	fmt.Printf("Loser: %v\n", hg.Loser())
-}
-
 
 func (p *CLIPlayer) Display(hg *HeartsGameInfo) {
 	fmt.Println("-------------")

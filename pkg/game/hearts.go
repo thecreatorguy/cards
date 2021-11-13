@@ -33,6 +33,9 @@ type HeartsGame struct {
 	HeartsBroken bool
 	MaxPoints int
 	Leader string
+	cancelListeners map[int]chan bool
+	nextListenerID int
+	Cancelled bool
 }
 
 type PlayerInfo struct {
@@ -43,6 +46,7 @@ type PlayerInfo struct {
 }
 
 type HeartsGameInfo struct {
+	Name string `json:"name"`
 	PlayerInfo map[string]PlayerInfo `json:"playerInfo"`
 	PlayerOrder []string `json:"playerOrder"`
 	PassDirection PassDirection `json:"passDirection"`
@@ -65,6 +69,8 @@ func NewHeartsGame(deciders []Decider, maxPoints int) *HeartsGame {
 		PlayerOrder: playerOrder,
 		PassDirection: PassLeft,
 		MaxPoints: maxPoints,
+		cancelListeners: map[int]chan bool{},
+		Cancelled: false,
 	}
 }
 
@@ -87,6 +93,7 @@ func (g *HeartsGame) GetDeciderInfo(decider Decider) interface{} {
 	}
 
 	return &HeartsGameInfo{
+		Name: decider.GetName(),
 		PlayerInfo: playerInfo,
 		PlayerOrder: g.PlayerOrder,
 		PassDirection: g.PassDirection,
@@ -119,6 +126,10 @@ func (g *HeartsGame) Loser() *Player {
 	return nil
 }
 
+func (g *HeartsGame) GameOver() bool {
+	return g.Cancelled || g.Loser() != nil
+}
+
 func (g *HeartsGameInfo) Loser() string {
 	for name, p := range g.PlayerInfo {
 		if p.Score >= g.MaxPoints {
@@ -128,13 +139,39 @@ func (g *HeartsGameInfo) Loser() string {
 	return ""
 }
 
-func (g *HeartsGame) Start() {
-	for g.Loser() == nil {
-		g.PlayRound()
+func (g *HeartsGame) Start() chan bool {
+	completeChannel := make(chan bool)
+	go func() {
+		for !g.GameOver() {
+			if g.PlayRound() {
+				break
+			}
+		}
+		for _, p := range g.Players {
+			p.Decider.Notify(g)
+		}
+		completeChannel <- true
+	}()
+	
+	return completeChannel
+}
+
+func (g *HeartsGame) Cancel() {
+	g.Cancelled = true
+	for _, c := range g.cancelListeners {
+		c <- true
 	}
-	for _, p := range g.Players {
-		p.Decider.Cleanup(g)
-	}
+}
+
+func (g *HeartsGame) GetCancelListener() (int, chan bool) {
+	ret := make(chan bool)
+	g.cancelListeners[g.nextListenerID] = ret
+	g.nextListenerID++
+	return g.nextListenerID-1, ret
+}
+
+func (g *HeartsGame) RemoveCancelListener(id int) {
+	delete(g.cancelListeners, id)
 }
 
 func (g *HeartsGame) NotifyAll() {
@@ -152,7 +189,7 @@ func (g *HeartsGame) FirstTrick() bool {
 	return false
 }
 
-func (g *HeartsGame) PlayRound() {
+func (g *HeartsGame) PlayRound() bool {
 	// Hand out the next set of cards
 	d := NewDeck()
 	d.Shuffle()
@@ -165,45 +202,8 @@ func (g *HeartsGame) PlayRound() {
 		g.GetPlayer(i).Hand.Sort()
 	}
 
-	if g.PassDirection != NoPass {
-		// Depending on the pass direction, pass 3 cards
-		resultsChannels := []chan Deck{make(chan Deck), make(chan Deck), make(chan Deck), make(chan Deck)}
-		for i := 0; i < 4; i++ {
-			go func(i int) {
-				resultsChannels[i] <- g.GetPlayer(i).PassCards(g)
-			}(i)
-		}
-		passedCards := make([][]Card, 4)
-		for i := 0; i < 4; i++ {
-			passedCards[i] = <-resultsChannels[i]
-		}
-
-		switch (g.PassDirection) {
-		case PassLeft:
-			g.GetPlayer(0).GetPassedCards(passedCards[3], g)
-			g.GetPlayer(1).GetPassedCards(passedCards[0], g)
-			g.GetPlayer(2).GetPassedCards(passedCards[1], g)
-			g.GetPlayer(3).GetPassedCards(passedCards[2], g)
-			g.PassDirection = PassRight
-		case PassRight:
-			g.GetPlayer(0).GetPassedCards(passedCards[1], g)
-			g.GetPlayer(1).GetPassedCards(passedCards[2], g)
-			g.GetPlayer(2).GetPassedCards(passedCards[3], g)
-			g.GetPlayer(3).GetPassedCards(passedCards[0], g)
-			g.PassDirection = PassAcross
-		case PassAcross:
-			g.GetPlayer(0).GetPassedCards(passedCards[3], g)
-			g.GetPlayer(1).GetPassedCards(passedCards[0], g)
-			g.GetPlayer(2).GetPassedCards(passedCards[1], g)
-			g.GetPlayer(3).GetPassedCards(passedCards[2], g)
-			g.PassDirection = NoPass
-		}
-
-		for i := 0; i < 4; i++ {
-			g.GetPlayer(i).Hand.Sort()
-		}
-	} else {
-		g.PassDirection = PassLeft
+	if cancelled := g.PassCards(); cancelled {
+		return true
 	}
 	
 
@@ -213,29 +213,15 @@ func (g *HeartsGame) PlayRound() {
 		if g.GetPlayer(i).Hand.Contains(Two, Clubs) {
 			leader = i
 		}
-		g.GetPlayer(i).roundPoints = 0
 	}
+	var cancelled bool
 	for trick := 0; trick < 13; trick++ {
-		g.Leader = g.PlayerOrder[leader]
-		var highestTrump int
-		var highestValue int
-		for i := 0; i < 4; i++ {
-			currentPlayer := g.GetPlayer((i + leader) % 4)
-			card := currentPlayer.PlayOnTrick(g)
-			g.CurrentTrick = append(g.CurrentTrick, card)
-			if card.Suit == *g.LeadSuit() && highestValue < card.ValueIndex() {
-				highestTrump = i
-				highestValue = card.ValueIndex()
-			}
-			g.NotifyAll()
+		leader, cancelled = g.PlayTrick(leader)
+		if cancelled {
+			return true
 		}
-
-		leader = (leader + highestTrump) % 4
-		g.GetPlayer(leader).roundPoints += PointValue(g.CurrentTrick)
-		
-		g.CurrentTrick = Deck{}
-		g.NotifyAll()
 	}
+	g.Leader = ""
 
 	// Score the round
 	var shotTheMoon *Player
@@ -244,7 +230,6 @@ func (g *HeartsGame) PlayRound() {
 			shotTheMoon = p
 		}
 	}
-
 	if shotTheMoon != nil {
 		for _, p := range g.Players {
 			if p != shotTheMoon {
@@ -256,46 +241,148 @@ func (g *HeartsGame) PlayRound() {
 			p.Score += p.roundPoints
 		}
 	}
-
 	for i := 0; i < 4; i++ {
 		g.GetPlayer(i).roundPoints = 0
 	}
-
 	g.NotifyAll()
+
+	return false
 }
 
-func (p *Player) PassCards(game *HeartsGame) Deck {
-	answer := p.Decider.Decide(PassCardsQuestion, game)
-	indices, ok := answer.([]int)
+func (g *HeartsGame) PassCards() bool {
+	if g.PassDirection != NoPass {
+		// Depending on the pass direction, pass 3 cards
+		resultsChannels := []chan *Deck{make(chan *Deck), make(chan *Deck), make(chan *Deck), make(chan *Deck)}
+		for i := 0; i < 4; i++ {
+			go func(i int) {
+				cards, cancelled := g.GetPlayer(i).PassCards(g)
+				if cancelled {
+					resultsChannels[i] <- nil
+				}
+				resultsChannels[i] <- &cards
+			}(i)
+		}
+		passedCards := make([]Deck, 4)
+		for i := 0; i < 4; i++ {
+			res := <-resultsChannels[i]
+			if res == nil {
+				return true
+			}
+			passedCards[i] = *res 
+		}
 
-	for !ok || len(indices) != 3 {
-		p.Decider.ShowInfo("Could not understand answer")
+		switch (g.PassDirection) {
+		case PassLeft:
+			for i := 0; i < 4; i++ {
+				g.GetPlayer(i).GetPassedCards(passedCards[(i+3)%4], g)
+			}
+			g.PassDirection = PassRight
+		case PassRight:
+			for i := 0; i < 4; i++ {
+				g.GetPlayer(i).GetPassedCards(passedCards[(i+1)%4], g)
+			}
+			g.PassDirection = PassAcross
+		case PassAcross:
+			for i := 0; i < 4; i++ {
+				g.GetPlayer(i).GetPassedCards(passedCards[(i+2)%4], g)
+			}
+			g.PassDirection = NoPass
+		}
 
-		answer = p.Decider.Decide(PassCardsQuestion, game)
-		indices, ok = answer.([]int)
+		for i := 0; i < 4; i++ {
+			g.GetPlayer(i).Hand.Sort()
+		}
+	} else {
+		g.PassDirection = PassLeft
 	}
+
+	return false
+}
+
+func (g *HeartsGame) PlayTrick(leader int) (int, bool) {
+	g.Leader = g.GetPlayer(leader).Decider.GetName()
+
+	var highestTrump int
+	var highestValue int
+	for i := 0; i < 4; i++ {
+		currentPlayer := g.GetPlayer((i + leader) % 4)
+		card, cancelled := currentPlayer.PlayOnTrick(g)
+		if cancelled {
+			return 0, true
+		}
+
+		g.CurrentTrick = append(g.CurrentTrick, card)
+		if card.Suit == *g.LeadSuit() && highestValue < card.ValueIndex() {
+			highestTrump = i
+			highestValue = card.ValueIndex()
+		}
+		g.NotifyAll()
+	}
+
+	leader = (leader + highestTrump) % 4
 	
-	sort.Slice(indices, func(i, j int) bool {return indices[i] < indices[j]})
+	g.GetPlayer(leader).roundPoints += PointValue(g.CurrentTrick)
+	
+	g.CurrentTrick = Deck{}
+	g.NotifyAll()
 
-	cards := Deck{p.Hand[indices[0]], p.Hand[indices[1]], p.Hand[indices[2]]}
-	res := append(p.Hand[:indices[0]], p.Hand[indices[0]+1:indices[1]]...)
-	res = append(res, p.Hand[indices[1]+1:indices[2]]...)
-	res = append(res, p.Hand[indices[2]+1:]...)
-	p.Hand = res
+	return leader, false
+}
 
-	return cards
+func (p *Player) GetAnswer(q Question, game *HeartsGame) (Answer, bool) {
+	ansChan := make(chan Answer)
+	go func() {
+		ansChan <- p.Decider.Decide(q, game)
+	}()
+	
+	var answer Answer
+	cancelID, cancelChan := game.GetCancelListener()
+	select {
+	case answer = <-ansChan:
+		game.RemoveCancelListener(cancelID)
+		return answer, false
+	case <-cancelChan:
+		return nil, true
+	}
+}
+
+func (p *Player) PassCards(game *HeartsGame) (Deck, bool) {
+	for {
+		answer, cancelled := p.GetAnswer(PassCardsQuestion, game)
+		if cancelled {
+			return Deck{}, true
+		}
+
+		indices, ok := answer.([]int)
+		for !ok || len(indices) != 3 {
+			p.Decider.ShowInfo("Could not understand answer")
+			continue
+		}
+		
+		sort.Slice(indices, func(i, j int) bool {return indices[i] < indices[j]})
+
+		cards := Deck{p.Hand[indices[0]], p.Hand[indices[1]], p.Hand[indices[2]]}
+		res := append(p.Hand[:indices[0]], p.Hand[indices[0]+1:indices[1]]...)
+		res = append(res, p.Hand[indices[1]+1:indices[2]]...)
+		res = append(res, p.Hand[indices[2]+1:]...)
+		p.Hand = res
+
+		return cards, false
+	}
 }
 
 func (p *Player) GetPassedCards(cards []Card, game *HeartsGame) {
 	p.Hand = append(p.Hand, cards...)
-	p.Decider.Notify(game)
 }
 
-func (p *Player) PlayOnTrick(game *HeartsGame) Card {
+func (p *Player) PlayOnTrick(game *HeartsGame) (Card, bool) {
 	for {
-		answer := p.Decider.Decide(PlayOnTrickQuestion, game)
-		index, ok := answer.(int)
+		answer, cancelled := p.GetAnswer(PlayOnTrickQuestion, game)
+		if cancelled {
+			return Card{}, true
+		}
 
+		index, ok := answer.(int)
 		if !ok {
 			p.Decider.ShowInfo("Could not understand answer")
 			continue
@@ -313,7 +400,7 @@ func (p *Player) PlayOnTrick(game *HeartsGame) Card {
 			}
 
 			p.Hand = append(p.Hand[:index], p.Hand[index+1:]...)
-			return card
+			return card, false
 		} else {
 			leadSuit := *game.LeadSuit()
 			isLeadSuit := leadSuit == card.Suit
@@ -333,7 +420,7 @@ func (p *Player) PlayOnTrick(game *HeartsGame) Card {
 				game.HeartsBroken = true
 			}
 			p.Hand = append(p.Hand[:index], p.Hand[index+1:]...)
-			return card
+			return card, false
 		}
 	}
 }

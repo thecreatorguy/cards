@@ -19,6 +19,9 @@ const (
 	ErrorMessageCode = MessageCode("error")
 	PingCode = MessageCode("ping")
 	PongCode = MessageCode("pong")
+	HostGameCode = MessageCode("host_game")
+	JoinGameCode = MessageCode("join_game")
+	ReconnectedCode = MessageCode("reconnected")
 )
 
 type Message struct {
@@ -146,7 +149,6 @@ func (s *Session) SendAndRecieveMessage(code MessageCode, content interface{}) (
 		return rm, false, nil
 
 	case <-time.After(TimeoutDuration):
-		fmt.Println("timed out")
 		s.recieveChannels[id] = nil
 		return Message{}, false, ErrTimeout
 	}	
@@ -163,11 +165,13 @@ func (s *Session) Alive() bool {
 
 func (s *Session) Reconnect(conn *websocket.Conn) {
 	s.conn = conn
-	s.lobby.SendMessage(s, Message{Code: RefreshCode})
+	s.lobby.SendMessage(s, Message{Code: ReconnectedCode})
 	s.Listen()
 }
 
 func (s *Session) Cleanup() {
+	s.conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(time.Second * 4))
+	s.conn.Close()
 	delete(Sessions, s.ID)
 }
 
@@ -177,20 +181,18 @@ func (s *Session) Listen() {
 		err := s.conn.ReadJSON(&m)
 		closed := websocket.IsCloseError(err, closedStatuses...)
 		if closed {
-			s.Cleanup()
+			if s.lobby == nil {
+				s.Cleanup()
+			}
 			break
 		}
 		if err != nil {
+			// TODO: fix this to look for more close errors, and retry on regular error
 			s.SendError(FailedDecodingError, err.Error())
-			// closed, err := s.SendError(FailedDecodingError, err.Error())
-			// if closed {
-			// 	s.Cleanup()
-			// 	break
-			// }
-			// if err != nil {
-			// 	log.Println(err)
-			// }
-			continue
+			if s.lobby == nil {
+				s.Cleanup()
+			}
+			break
 		}
 
 		// If waiting for reply, send message to that thread
@@ -212,7 +214,7 @@ func (s *Session) Listen() {
 		// If we are in a lobby, that lobby should handle all messages
 		if s.lobby != nil {
 			s.lobby.SendMessage(s, m)
-			continue	
+			continue
 		}
 
 		// Otherwise, we are in the init screen, which should connect us with a lobby

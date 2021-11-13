@@ -8,8 +8,8 @@ type RandomCPU struct {
 	ID string
 }
 
-func (cpu *RandomCPU) Decide(q Question, g GameState) Answer {
-	hg := g.GetDeciderInfo(cpu).(*HeartsGameInfo)
+func RandomDecision(d Decider, q Question, g GameState) Answer {
+	hg := g.GetDeciderInfo(d).(*HeartsGameInfo)
 
 	switch q {
 	case PassCardsQuestion:
@@ -33,6 +33,10 @@ func (cpu *RandomCPU) Decide(q Question, g GameState) Answer {
 	return nil
 }
 
+func (cpu *RandomCPU) Decide(q Question, g GameState) Answer {
+	return RandomDecision(cpu, q, g)
+}
+
 func (cpu *RandomCPU) ShowInfo(string) {}
 
 func (cpu *RandomCPU) GetName() string {
@@ -40,5 +44,3 @@ func (cpu *RandomCPU) GetName() string {
 }
 
 func (cpu *RandomCPU) Notify(GameState) {}
-
-func (cpu *RandomCPU) Cleanup(GameState) {}
