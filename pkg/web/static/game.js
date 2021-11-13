@@ -102,7 +102,6 @@ function updatePlayerDashboard(container, name, playerInfo) {
     if (playerInfo.lead) {
         nameDiv.innerText = `Lead: ${nameDiv.innerText}`;
     }
-    
 
     const score = document.createElement("div");
     container.append(score);
@@ -148,7 +147,7 @@ let CardsController = {
     },
 
     receive(msg) {
-        if (msg.code != PingCode) console.log(msg);
+        // if (msg.code != PingCode) console.log(msg);
         switch(msg.code) {
         case PingCode:
             CardsController.send({id: msg.id, code: PongCode});

@@ -295,6 +295,7 @@ func (g *HeartsGame) PassCards() bool {
 	} else {
 		g.PassDirection = PassLeft
 	}
+	g.NotifyAll()
 
 	return false
 }
